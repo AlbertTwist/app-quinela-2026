@@ -1,85 +1,94 @@
-# Quinela Mundial 2026 · Posgrado IMP
+# Quinela Mundial 2026 · Posgrado IMP — v3
 
-Versión robusta para desplegar en GitHub + Streamlit Community Cloud.
+## Estructura del proyecto
 
-## Qué cambió
-
-- Persistencia con Supabase cuando configuras secretos.
-- Respaldo JSON local únicamente para desarrollo.
-- Contraseñas de usuarios con PBKDF2 + salt.
-- Administración con contraseña en `st.secrets`.
-- Bloqueo automático por `kickoff_at` y bloqueo manual desde el panel admin.
-- Fixture en `matches_2026.csv`, no dentro del código.
-- IDs estables por partido (`M001`, `M002`, etc.).
-
-## Archivos del proyecto
-
-```text
-quinela_streamlit_mejorada/
-├── app.py
-├── matches_2026.csv
-├── requirements.txt
-├── supabase_schema.sql
-├── README_DEPLOY.md
-├── .gitignore
-├── .streamlit/
-│   └── config.toml
-└── tools/
-    └── hash_password.py
+```
+app.py                    ← App principal
+matches_2026.csv          ← Calendario completo con kickoff_at en español
+requirements.txt          ← Dependencias base (sin supabase)
+requirements-supabase.txt ← Dependencia opcional para Supabase
+supabase_schema.sql       ← Esquema SQL para Supabase
+tools/hash_password.py    ← Genera ADMIN_PASSWORD_HASH seguro
+data/.gitkeep             ← Mantiene carpeta data/ en el repo (JSON ignorado)
+.gitignore                ← No sube secrets.toml ni quinela_data.json
+.streamlit/config.toml    ← Tema visual
 ```
 
-## Configuración recomendada con Supabase
+## Despliegue en Streamlit Community Cloud
 
-1. Entra a Supabase y crea un proyecto.
-2. Abre **SQL Editor** y ejecuta `supabase_schema.sql`.
-3. En Streamlit Community Cloud abre tu app → **Settings** → **Secrets**.
-4. Pega algo como esto:
+### 1. Sube los archivos a GitHub
+Asegúrate de que `data/` está en el repo (con `.gitkeep`).
+`data/quinela_data.json` está en `.gitignore` y **no** se sube.
+
+### 2. Configura los Secrets
+En Streamlit Cloud → tu app → **Settings → Secrets**:
 
 ```toml
-APP_TZ = "America/Mexico_City"
-ADMIN_PASSWORD = "cambia_esto_por_un_password_fuerte"
-SUPABASE_URL = "https://TU-PROYECTO.supabase.co"
-SUPABASE_SERVICE_ROLE_KEY = "TU_SERVICE_ROLE_KEY"
+APP_TZ         = "America/Mexico_City"
+ADMIN_PASSWORD = "cambia_esto"
 ```
 
-Para mayor seguridad puedes usar `ADMIN_PASSWORD_HASH` en vez de `ADMIN_PASSWORD`:
-
+Para contraseña de admin más segura, genera el hash primero:
 ```bash
 python tools/hash_password.py "tu_password_seguro"
 ```
-
-Luego pega el resultado en secrets:
-
+Luego usa `ADMIN_PASSWORD_HASH` en lugar de `ADMIN_PASSWORD`:
 ```toml
 ADMIN_PASSWORD_HASH = "pbkdf2_sha256$260000$..."
 ```
 
-No subas `.streamlit/secrets.toml` a GitHub.
+### 3. Sin Supabase (modo local)
+La app usa `data/quinela_data.json` automáticamente.
+**Limitación:** en Streamlit Cloud el filesystem es efímero. Los datos se 
+pierden si el servidor se reinicia (ocurre tras ~1h de inactividad).
+Para un torneo de varios días, usa Supabase.
 
-## Despliegue en Streamlit
-
-1. Sube estos archivos al repositorio de GitHub.
-2. Verifica que `requirements.txt` esté en la raíz.
-3. En Streamlit Community Cloud selecciona el repo, rama y `app.py` como entrypoint.
-4. Configura los secrets antes de compartir la app.
-
-## Calendario y bloqueos
-
-`matches_2026.csv` contiene fecha y sede de fase de grupos. La columna `kickoff_at` está vacía para evitar bloquear con horarios inventados. Para bloqueo automático, llena `kickoff_at` con formato ISO:
-
-```csv
-2026-06-11T13:00:00-06:00
-```
-
-Si aún no tienes la hora exacta, usa el panel de administración → **Bloqueos** para cerrar manualmente cada partido.
+### 4. Con Supabase (recomendado para producción)
+1. Crea proyecto en [supabase.com](https://supabase.com)
+2. Ejecuta `supabase_schema.sql` en el SQL Editor
+3. Instala la dependencia:
+   ```bash
+   pip install -r requirements.txt -r requirements-supabase.txt
+   ```
+   En Streamlit Cloud, **renombra** `requirements-supabase.txt` como
+   `requirements.txt` o agrégalo al archivo principal.
+4. Añade a los Secrets:
+   ```toml
+   SUPABASE_URL              = "https://TU-PROYECTO.supabase.co"
+   SUPABASE_SERVICE_ROLE_KEY = "TU_SERVICE_ROLE_KEY"
+   ```
 
 ## Ejecución local
 
 ```bash
 python -m venv .venv
-.venv\Scripts\activate   # Windows PowerShell
-pip install -r requirements.txt
+# Windows:
+.venv\Scripts\activate
+# macOS/Linux:
+source .venv/bin/activate
+
+pip install -r requirements.txt   # sin supabase
+# o:
+pip install -r requirements.txt -r requirements-supabase.txt
+
 streamlit run app.py
 ```
 
-Para probar sin Supabase, la app usará `data/quinela_data.json`. Ese archivo está ignorado por Git.
+## Sistema de puntos
+
+| Resultado         | Puntos |
+|-------------------|--------|
+| Marcador exacto   | 3      |
+| Resultado correcto| 1      |
+| Fallo             | 0      |
+
+**Tiebreaker** (orden de desempate): Puntos → Exactos → Acertados →
+Menor diferencia de goles → Mayor cantidad pronosticada.
+
+## Calendario y bloqueos
+
+- `kickoff_at` está lleno en formato ISO con offset `-06:00` (CDMX).
+  El bloqueo automático actúa en cuanto llega esa hora.
+- Si necesitas bloquear antes (e.g. partido adelantado), usa el panel
+  de administración → **Bloqueos manuales**.
+- Para actualizar horarios, edita `matches_2026.csv` y haz commit.

@@ -1,7 +1,7 @@
 """
 Quinela Mundial 2026 · Posgrado IMP
 =====================================
-v3 — Mejoras sobre versión anterior:
+v4 — Mejoras de producción sobre v3:
   - CSV con nombres en español y kickoff_at completo → bloqueo automático funciona
   - supabase es opcional; requirements.txt base no lo incluye
   - Operaciones Supabase con manejo de error explícito (resultado + lock atómico)
@@ -11,12 +11,18 @@ v3 — Mejoras sobre versión anterior:
   - Panel admin con contador de pendientes y vista previa de bloqueos
   - Sidebar muestra posición global del usuario
   - Validación de kickoff_at en zona horaria local sin depender de pytz
+  - Supabase incluido por defecto en requirements para evitar fallback local accidental
+  - Configuración flexible de puntos y registro abierto/cerrado desde Secrets
+  - Auditoría de acciones administrativas y registro de usuarios
+  - Exportaciones CSV para tabla, pronósticos y respaldo completo
+  - Sección de reglamento e indicadores de avance por usuario
 """
 
 from __future__ import annotations
 
 import hashlib
 import hmac
+import io
 import json
 import os
 import re
@@ -62,6 +68,22 @@ def get_secret(name: str, default: str = "") -> str:
     return str(val) if val is not None else default
 
 
+def get_int_secret(name: str, default: int) -> int:
+    try:
+        return int(get_secret(name, str(default)))
+    except Exception:
+        return default
+
+
+def get_bool_secret(name: str, default: bool) -> bool:
+    raw = get_secret(name, str(default)).strip().lower()
+    if raw in {"1", "true", "yes", "si", "sí", "on"}:
+        return True
+    if raw in {"0", "false", "no", "off"}:
+        return False
+    return default
+
+
 APP_TZ_NAME   = get_secret("APP_TZ", "America/Mexico_City")
 try:
     APP_TZ = ZoneInfo(APP_TZ_NAME)
@@ -73,6 +95,9 @@ ADMIN_PASSWORD      = get_secret("ADMIN_PASSWORD", "")
 ADMIN_PASSWORD_HASH = get_secret("ADMIN_PASSWORD_HASH", "")
 SUPABASE_URL        = get_secret("SUPABASE_URL", "")
 SUPABASE_KEY        = get_secret("SUPABASE_SERVICE_ROLE_KEY", "") or get_secret("SUPABASE_KEY", "")
+POINTS_EXACT       = max(1, get_int_secret("POINTS_EXACT", 3))
+POINTS_RESULT      = max(0, get_int_secret("POINTS_RESULT", 1))
+ENABLE_REGISTRATION = get_bool_secret("ENABLE_REGISTRATION", True)
 
 USERNAME_RE = re.compile(r"^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9_. -]{3,40}$")
 
@@ -178,7 +203,7 @@ class LocalStore:
         self.path = path
         self.path.parent.mkdir(parents=True, exist_ok=True)
         if not self.path.exists():
-            self._save({"users": {}, "predictions": {}, "results": {}, "locks": {}})
+            self._save({"users": {}, "predictions": {}, "results": {}, "locks": {}, "audit_log": []})
         self._migrate()
 
     # ── I/O ──────────────────────────────────────────────────
@@ -186,7 +211,7 @@ class LocalStore:
         try:
             return json.loads(self.path.read_text(encoding="utf-8"))
         except Exception:
-            return {"users": {}, "predictions": {}, "results": {}, "locks": {}}
+            return {"users": {}, "predictions": {}, "results": {}, "locks": {}, "audit_log": []}
 
     def _save(self, data: dict[str, Any]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -231,6 +256,7 @@ class LocalStore:
 
         for k in ("users", "predictions", "results", "locks"):
             data.setdefault(k, {})
+        data.setdefault("audit_log", [])
 
         if changed:
             self._save(data)
@@ -316,6 +342,23 @@ class LocalStore:
             return True, "ok"
         except Exception as exc:
             return False, str(exc)
+
+    # ── Auditoría ────────────────────────────────────────────
+    def append_audit(self, actor: str, event: str, detail: dict | None = None) -> None:
+        data = self._load()
+        data.setdefault("audit_log", [])
+        data["audit_log"].append({
+            "id": len(data["audit_log"]) + 1,
+            "created_at": datetime.now(APP_TZ).isoformat(timespec="seconds"),
+            "actor": str(actor or "system"),
+            "event": str(event),
+            "detail": detail or {},
+        })
+        self._save(data)
+
+    def list_audit(self, limit: int = 100) -> list[dict]:
+        rows = self._load().get("audit_log", [])
+        return list(reversed(rows))[:limit]
 
     def export_all(self) -> dict:
         return self._load()
@@ -416,12 +459,33 @@ class SupabaseStore:
             )
         return True, "ok"
 
+    def append_audit(self, actor: str, event: str, detail: dict | None = None) -> None:
+        try:
+            self.client.table("quinela_audit_log").insert({
+                "actor": str(actor or "system"),
+                "event": str(event),
+                "detail": detail or {},
+            }).execute()
+        except Exception:
+            # La auditoría no debe romper la operación principal.
+            pass
+
+    def list_audit(self, limit: int = 100) -> list[dict]:
+        try:
+            return (self.client.table("quinela_audit_log")
+                    .select("created_at,actor,event,detail")
+                    .order("created_at", desc=True)
+                    .limit(limit).execute().data or [])
+        except Exception:
+            return []
+
     def export_all(self) -> dict:
         return {
             "users": self.list_users(),
             "predictions": self.list_all_predictions(),
             "results": self.list_results(),
             "locks": self.list_locks(),
+            "audit_log": self.list_audit(500),
             "exported_at": datetime.now(APP_TZ).isoformat(),
         }
 
@@ -467,6 +531,29 @@ if not MATCHES.empty:
 else:
     DATE_GROUPS = {}
 
+
+def validate_matches(df: pd.DataFrame) -> list[str]:
+    warnings: list[str] = []
+    if df.empty:
+        return ["Calendario vacío o no cargado."]
+    dup = df[df["match_id"].duplicated()]["match_id"].tolist()
+    if dup:
+        warnings.append(f"IDs duplicados en calendario: {', '.join(map(str, dup))}")
+    empty_ko = int((df["kickoff_at"].astype(str).str.strip() == "").sum())
+    if empty_ko:
+        warnings.append(f"Hay {empty_ko} partidos sin kickoff_at; requerirán bloqueo manual.")
+    for r in df.itertuples(index=False):
+        raw = str(getattr(r, "kickoff_at", "")).strip()
+        if raw:
+            try:
+                datetime.fromisoformat(raw)
+            except Exception:
+                warnings.append(f"kickoff_at inválido en {r.match_id}: {raw}")
+    return warnings
+
+
+CALENDAR_WARNINGS = validate_matches(MATCHES)
+
 # ──────────────────────────────────────────────────────────────
 # LÓGICA DE JUEGO
 # ──────────────────────────────────────────────────────────────
@@ -500,19 +587,23 @@ def fmt_kickoff(row: Any) -> str:
 
 def calc_pts(ph: int, pa: int, rh: int, ra: int) -> int:
     if ph == rh and pa == ra:
-        return 3
-    return 1 if ((ph > pa) - (ph < pa)) == ((rh > ra) - (rh < ra)) else 0
+        return POINTS_EXACT
+    return POINTS_RESULT if ((ph > pa) - (ph < pa)) == ((rh > ra) - (rh < ra)) else 0
 
 
 def pts_label(pts: int) -> str:
-    return {3: "🎯 Exacto · +3", 1: "✅ Resultado · +1", 0: "❌ Sin puntos"}[pts]
+    if pts == POINTS_EXACT:
+        return f"🎯 Exacto · +{POINTS_EXACT}"
+    if pts == POINTS_RESULT and POINTS_RESULT > 0:
+        return f"✅ Resultado · +{POINTS_RESULT}"
+    return "❌ Sin puntos"
 
 
 def build_standings(users, all_preds, results) -> pd.DataFrame:
     rows = []
     for u in users:
-        uname = u["username"]
-        display = u.get("display_name") or uname
+        uname = user_key(u["username"])
+        display = u.get("display_name") or u["username"]
         preds = all_preds.get(uname, {})
         pts = exactos = correctos = evaluados = pronosticados = dif = 0
         for mid, pred in preds.items():
@@ -525,10 +616,11 @@ def build_standings(users, all_preds, results) -> pd.DataFrame:
             rh, ra = int(res["home_goals"]), int(res["away_goals"])
             p = calc_pts(ph, pa, rh, ra)
             pts += p
-            exactos   += int(p == 3)
-            correctos += int(p >= 1)
+            exactos   += int(p == POINTS_EXACT)
+            correctos += int(p >= POINTS_RESULT and POINTS_RESULT > 0)
             dif       += abs(ph - rh) + abs(pa - ra)
         rows.append({
+            "_username": uname,
             "Usuario": display,
             "Puntos": pts,
             "Exactos 🎯": exactos,
@@ -547,6 +639,34 @@ def build_standings(users, all_preds, results) -> pd.DataFrame:
     ).reset_index(drop=True)
 
 
+def build_predictions_export(users, all_preds, results) -> pd.DataFrame:
+    name_by_key = {user_key(u["username"]): (u.get("display_name") or u["username"]) for u in users}
+    rows = []
+    for ukey, preds in all_preds.items():
+        for mid, pred in preds.items():
+            match = MATCH_IDX.get(mid)
+            res = results.get(mid)
+            ph, pa = int(pred["home_goals"]), int(pred["away_goals"])
+            pts = ""
+            result_txt = ""
+            if res:
+                rh, ra = int(res["home_goals"]), int(res["away_goals"])
+                pts = calc_pts(ph, pa, rh, ra)
+                result_txt = f"{rh}-{ra}"
+            rows.append({
+                "usuario": name_by_key.get(ukey, ukey),
+                "usuario_id": ukey,
+                "match_id": mid,
+                "grupo": getattr(match, "group", ""),
+                "partido": f"{getattr(match, 'home', '')} vs {getattr(match, 'away', '')}",
+                "pronostico": f"{ph}-{pa}",
+                "resultado": result_txt,
+                "puntos": pts,
+                "actualizado": pred.get("updated_at", ""),
+            })
+    return pd.DataFrame(rows)
+
+
 # ──────────────────────────────────────────────────────────────
 # AUTENTICACIÓN
 # ──────────────────────────────────────────────────────────────
@@ -561,6 +681,10 @@ def register_user(username: str, pw: str) -> tuple[bool, str]:
     if STORE.get_user(username):
         return False, "Ese usuario ya existe."
     STORE.create_user(username, make_password_hash(pw))
+    try:
+        STORE.append_audit(username, "user_registered", {"username": user_key(username)})
+    except Exception:
+        pass
     return True, "Cuenta creada. Ahora inicia sesión."
 
 
@@ -572,15 +696,16 @@ def login_user(username: str, pw: str) -> tuple[bool, str]:
     # Migra hash legado en el primer login exitoso
     if not record["password_hash"].startswith("pbkdf2_sha256$"):
         STORE.update_user_hash(username, make_password_hash(pw))
-    st.session_state.logged_in    = True
-    st.session_state.current_user = record["username"]
+    st.session_state.logged_in      = True
+    st.session_state.current_user   = record["username"]
+    st.session_state.current_display = record.get("display_name") or record["username"]
     return True, "Sesión iniciada."
 
 
 # ──────────────────────────────────────────────────────────────
 # ESTADO DE SESIÓN
 # ──────────────────────────────────────────────────────────────
-for _k, _d in {"logged_in": False, "current_user": "", "is_admin": False}.items():
+for _k, _d in {"logged_in": False, "current_user": "", "current_display": "", "is_admin": False}.items():
     st.session_state.setdefault(_k, _d)
 
 # Datos vivos (sin cache: siempre reflejan el estado actual del store)
@@ -619,18 +744,21 @@ with st.sidebar:
                     st.rerun()
 
         with tab_reg:
-            u_r = st.text_input("Nombre de usuario", placeholder="Nombre Apellido", key="reg_u")
-            p_r = st.text_input("Contraseña (mín. 8)", type="password", key="reg_p")
-            if st.button("Crear cuenta", use_container_width=True):
-                ok, msg = register_user(u_r, p_r)
-                (st.success if ok else st.error)(msg)
+            if not ENABLE_REGISTRATION:
+                st.info("El registro está cerrado temporalmente. Solicita acceso al administrador.")
+            else:
+                u_r = st.text_input("Nombre de usuario", placeholder="Nombre Apellido", key="reg_u")
+                p_r = st.text_input("Contraseña (mín. 8)", type="password", key="reg_p")
+                if st.button("Crear cuenta", use_container_width=True):
+                    ok, msg = register_user(u_r, p_r)
+                    (st.success if ok else st.error)(msg)
 
     else:
-        st.success(f"✅ {st.session_state.current_user}")
+        st.success(f"✅ {st.session_state.current_display or st.session_state.current_user}")
 
         my_preds   = STORE.get_predictions(st.session_state.current_user)
         my_ukey    = user_key(st.session_state.current_user)
-        my_row_df  = STANDINGS[STANDINGS["Usuario"].str.casefold() == my_ukey] if not STANDINGS.empty else pd.DataFrame()
+        my_row_df  = STANDINGS[STANDINGS["_username"] == my_ukey] if (not STANDINGS.empty and "_username" in STANDINGS.columns) else pd.DataFrame()
         my_pts     = int(my_row_df.iloc[0]["Puntos"])    if not my_row_df.empty else 0
         my_eval    = int(my_row_df.iloc[0]["Evaluados"]) if not my_row_df.empty else 0
         my_pos     = my_row_df.index[0] + 1              if not my_row_df.empty else "-"
@@ -651,14 +779,14 @@ with st.sidebar:
         """, unsafe_allow_html=True)
 
         if st.button("Cerrar sesión", use_container_width=True):
-            for _k in ("logged_in", "current_user", "is_admin"):
-                st.session_state[_k] = False if _k != "current_user" else ""
+            for _k in ("logged_in", "current_user", "current_display", "is_admin"):
+                st.session_state[_k] = False if _k not in ("current_user", "current_display") else ""
             st.rerun()
 
     st.divider()
     st.caption(
-        "🎯 Marcador exacto = **3 pts**\n\n"
-        "✅ Resultado correcto = **1 pt**\n\n"
+        f"🎯 Marcador exacto = **{POINTS_EXACT} pts**\n\n"
+        f"✅ Resultado correcto = **{POINTS_RESULT} pt(s)**\n\n"
         "❌ Fallo = **0 pts**\n\n"
         "🔒 Los pronósticos se bloquean al inicio de cada partido."
     )
@@ -670,8 +798,8 @@ with st.sidebar:
 # ──────────────────────────────────────────────────────────────
 # PESTAÑAS
 # ──────────────────────────────────────────────────────────────
-tab_table, tab_preds, tab_results_tab, tab_admin_tab = st.tabs([
-    "🏆 Tabla General", "📝 Mis Pronósticos", "📊 Resultados", "⚙️ Administración"
+tab_table, tab_preds, tab_results_tab, tab_rules_tab, tab_admin_tab = st.tabs([
+    "🏆 Tabla General", "📝 Mis Pronósticos", "📊 Resultados", "📘 Reglamento", "⚙️ Administración"
 ])
 
 # ════════════════════════════════════════
@@ -686,7 +814,7 @@ with tab_table:
         medals = {1: "🥇", 2: "🥈", 3: "🥉"}
         max_pts = STANDINGS["Puntos"].max() or 1
 
-        display_df = STANDINGS.copy()
+        display_df = STANDINGS.drop(columns=["_username"], errors="ignore").copy()
         display_df.insert(0, "Pos.", [
             f"{medals.get(i+1, '')} {i+1}" for i in range(len(display_df))
         ])
@@ -699,6 +827,12 @@ with tab_table:
                 "Promedio":    st.column_config.NumberColumn(format="%.2f"),
                 "Pos.":        st.column_config.TextColumn(width="small"),
             },
+        )
+        st.download_button(
+            "⬇️ Descargar tabla CSV",
+            data=display_df.to_csv(index=False).encode("utf-8-sig"),
+            file_name="tabla_quinela.csv",
+            mime="text/csv",
         )
 
     c1, c2, c3, c4 = st.columns(4)
@@ -846,7 +980,30 @@ with tab_results_tab:
         st.info("Aún no hay resultados para este filtro.")
 
 # ════════════════════════════════════════
-# 4 · ADMINISTRACIÓN
+# 4 · REGLAMENTO
+# ════════════════════════════════════════
+with tab_rules_tab:
+    st.subheader("Reglamento de la quinela")
+    st.markdown(f"""
+    **Sistema de puntos**
+
+    | Criterio | Puntos |
+    |---|---:|
+    | Marcador exacto | {POINTS_EXACT} |
+    | Resultado correcto sin marcador exacto | {POINTS_RESULT} |
+    | Pronóstico fallido | 0 |
+
+    **Desempates:** Puntos → Exactos → Acertados → menor diferencia total de marcador → mayor número de pronósticos registrados.
+
+    **Bloqueos:** cada partido se bloquea automáticamente al llegar su `kickoff_at`. Si no hay hora oficial o hay ajuste operativo, el administrador puede bloquear manualmente.
+
+    **Edición:** puedes cambiar tu pronóstico mientras el partido siga abierto. Una vez bloqueado, ya no se puede editar.
+    """)
+    if CALENDAR_WARNINGS:
+        st.warning("Revisión de calendario: " + " | ".join(CALENDAR_WARNINGS))
+
+# ════════════════════════════════════════
+# 5 · ADMINISTRACIÓN
 # ════════════════════════════════════════
 with tab_admin_tab:
     st.subheader("Panel de administración")
@@ -869,8 +1026,8 @@ with tab_admin_tab:
     if st.session_state.is_admin:
         st.success("✅ Modo administrador activo")
 
-        adm_res_tab, adm_lock_tab, adm_export_tab = st.tabs(
-            ["Resultados", "Bloqueos manuales", "Respaldo"]
+        adm_res_tab, adm_lock_tab, adm_users_tab, adm_audit_tab, adm_export_tab = st.tabs(
+            ["Resultados", "Bloqueos manuales", "Participantes", "Auditoría", "Respaldo"]
         )
 
         # ── Resultados ────────────────────────────────────────
@@ -915,6 +1072,9 @@ with tab_admin_tab:
                 if st.button("📥 Publicar resultado", use_container_width=True, type="primary"):
                     ok, msg = STORE.publish_result(sel.match_id, int(rh), int(ra))
                     if ok:
+                        STORE.append_audit(st.session_state.current_user or "admin", "result_published", {
+                            "match_id": sel.match_id, "home": int(rh), "away": int(ra)
+                        })
                         st.success(f"✅ Resultado publicado: {sel.home} **{rh}** – **{ra}** {sel.away}")
                         st.rerun()
                     else:
@@ -934,6 +1094,7 @@ with tab_admin_tab:
                     )
                     if st.button("🗑️ Eliminar resultado", type="secondary"):
                         STORE.delete_result(del_id)
+                        STORE.append_audit(st.session_state.current_user or "admin", "result_deleted", {"match_id": del_id})
                         st.success("Resultado eliminado. El bloqueo manual se conserva.")
                         st.rerun()
                 else:
@@ -975,12 +1136,57 @@ with tab_admin_tab:
             new_lock = st.toggle("Bloqueo manual activado", value=cur_lock, key="blk_toggle")
             if st.button("Guardar bloqueo", use_container_width=True):
                 STORE.set_lock(blk_row.match_id, new_lock)
+                STORE.append_audit(st.session_state.current_user or "admin", "manual_lock_updated", {
+                    "match_id": blk_row.match_id, "locked": bool(new_lock)
+                })
                 st.success("Bloqueo actualizado.")
                 st.rerun()
+
+        # ── Participantes ─────────────────────────────────────
+        with adm_users_tab:
+            st.markdown("#### Avance por participante")
+            if STANDINGS.empty:
+                st.info("Aún no hay participantes.")
+            else:
+                users_df = STANDINGS.drop(columns=["_username"], errors="ignore").copy()
+                st.dataframe(users_df, use_container_width=True, hide_index=True)
+                st.download_button(
+                    "⬇️ Descargar participantes/tabla CSV",
+                    data=users_df.to_csv(index=False).encode("utf-8-sig"),
+                    file_name="quinela_participantes.csv",
+                    mime="text/csv",
+                    use_container_width=True,
+                )
+
+            pred_export = build_predictions_export(USERS, ALL_PREDS, RESULTS)
+            if not pred_export.empty:
+                st.download_button(
+                    "⬇️ Descargar todos los pronósticos CSV",
+                    data=pred_export.to_csv(index=False).encode("utf-8-sig"),
+                    file_name="quinela_pronosticos_detalle.csv",
+                    mime="text/csv",
+                    use_container_width=True,
+                )
+            else:
+                st.caption("Aún no hay pronósticos registrados.")
+
+        # ── Auditoría ─────────────────────────────────────────
+        with adm_audit_tab:
+            st.markdown("#### Bitácora de cambios")
+            audit_rows = STORE.list_audit(150)
+            if audit_rows:
+                audit_df = pd.DataFrame(audit_rows)
+                if "detail" in audit_df.columns:
+                    audit_df["detail"] = audit_df["detail"].apply(lambda x: json.dumps(x, ensure_ascii=False) if isinstance(x, (dict, list)) else str(x))
+                st.dataframe(audit_df, use_container_width=True, hide_index=True)
+            else:
+                st.info("Sin eventos de auditoría registrados o tabla no creada.")
 
         # ── Respaldo ─────────────────────────────────────────
         with adm_export_tab:
             st.markdown("#### Respaldo de datos")
+            if CALENDAR_WARNINGS:
+                st.warning("Revisión de calendario: " + " | ".join(CALENDAR_WARNINGS))
             payload = json.dumps(
                 STORE.export_all(), ensure_ascii=False, indent=2, default=str
             )

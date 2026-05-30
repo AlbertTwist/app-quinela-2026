@@ -895,7 +895,7 @@ st.markdown("""
     <span class="hero-pill">🎯 Quinela institucional</span>
   </div>
   <h1 class="hero-title">Quinela Mundial 2026</h1>
-  <p class="hero-subtitle">Pronostica, compite y sigue la tabla general con una experiencia más clara, visual y lista para usarse en comunidad.</p>
+  <p class="hero-subtitle">Pronostica, compite y sigue la tabla general.</p>
 </div>
 """, unsafe_allow_html=True)
 

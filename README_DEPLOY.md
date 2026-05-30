@@ -1,3 +1,9 @@
+# Quinela Mundial 2026 · v9.1 Hotfix
+
+Esta versión corrige `StreamlitDuplicateElementId` agregando claves únicas (`key`) a widgets repetidos en pronósticos, resultados, descargas y administración.
+
+---
+
 # Quinela Mundial 2026 · Posgrado IMP — v9 tablas por etapa + premios
 
 Versión reforzada para GitHub + Streamlit Cloud + Supabase, con diseño institucional, calendario completo de 104 partidos y dos tablas de competencia: **fase de grupos** y **eliminatorias**.

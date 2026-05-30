@@ -1170,6 +1170,7 @@ def render_stage_table(title: str, subtitle: str, df: pd.DataFrame, filename: st
         file_name=filename,
         mime="text/csv",
         use_container_width=True,
+        key=f"download_stage_{filename}",
     )
 
 
@@ -1461,7 +1462,7 @@ with st.sidebar:
         with tab_login:
             u_in = st.text_input("Usuario", key="login_u")
             p_in = st.text_input("Contraseña", type="password", key="login_p")
-            if st.button("Iniciar sesión", use_container_width=True):
+            if st.button("Iniciar sesión", use_container_width=True, key="login_button"):
                 ok, msg = login_user(u_in, p_in)
                 (st.success if ok else st.error)(msg)
                 if ok:
@@ -1473,7 +1474,7 @@ with st.sidebar:
             else:
                 u_r = st.text_input("Nombre de usuario", placeholder="Nombre Apellido", key="reg_u")
                 p_r = st.text_input("Contraseña (mín. 8)", type="password", key="reg_p")
-                if st.button("Crear cuenta", use_container_width=True):
+                if st.button("Crear cuenta", use_container_width=True, key="register_button"):
                     ok, msg = register_user(u_r, p_r)
                     (st.success if ok else st.error)(msg)
     else:
@@ -1507,7 +1508,7 @@ with st.sidebar:
             pct = len(my_preds) / TOTAL_MATCHES
             st.progress(pct, text=f"{len(my_preds)} de {TOTAL_MATCHES} partidos pronosticados")
 
-        if st.button("Cerrar sesión", use_container_width=True):
+        if st.button("Cerrar sesión", use_container_width=True, key="logout_button"):
             st.session_state.logged_in    = False
             st.session_state.current_user = ""
             st.session_state.is_admin     = False
@@ -1848,8 +1849,20 @@ with tab_preds:
                                         a, b = st.columns(2)
                                         dh = int(pred["home_goals"]) if pred else 0
                                         da = int(pred["away_goals"]) if pred else 0
-                                        gh = a.number_input(row.home[:14], min_value=0, max_value=30, value=dh)
-                                        ga = b.number_input(row.away[:14], min_value=0, max_value=30, value=da)
+                                        gh = a.number_input(
+                                            row.home[:14],
+                                            min_value=0,
+                                            max_value=30,
+                                            value=dh,
+                                            key=f"pred_home_{row.match_id}",
+                                        )
+                                        ga = b.number_input(
+                                            row.away[:14],
+                                            min_value=0,
+                                            max_value=30,
+                                            value=da,
+                                            key=f"pred_away_{row.match_id}",
+                                        )
                                         if st.form_submit_button("💾 Guardar", use_container_width=True):
                                             # Revalidar bloqueo al momento del submit
                                             if is_locked(row, STORE.list_locks(), STORE.list_results()):
@@ -1878,7 +1891,7 @@ with tab_results_tab:
     rc1, rc2, rc3 = st.columns([1.1, 1.4, 2.5])
     res_stage = rc1.selectbox("Etapa", ["Todas", "Grupos", "Eliminatorias"], key="res_stage")
     rg        = rc2.selectbox("Grupo/Ronda", ["Todos"] + BUCKETS, key="res_group", format_func=bucket_format)
-    show_all  = rc3.checkbox("Mostrar también partidos sin resultado", value=False)
+    show_all  = rc3.checkbox("Mostrar también partidos sin resultado", value=False, key="res_show_all")
 
     rows_res = []
     for row in MATCHES.itertuples(index=False):
@@ -2030,7 +2043,7 @@ with tab_admin_tab:
 
     if not st.session_state.is_admin:
         ap = st.text_input("Contraseña de administrador", type="password", key="adm_pw")
-        if st.button("Entrar como admin", use_container_width=True):
+        if st.button("Entrar como admin", use_container_width=True, key="admin_login_button"):
             if verify_admin(ap):
                 st.session_state.is_admin = True
                 st.rerun()
@@ -2079,7 +2092,7 @@ with tab_admin_tab:
                 ra = cb.number_input(f"Goles {sel.away}", min_value=0, max_value=30,
                                      value=int(existing.get("away_goals", 0)), key="adm_ra")
 
-                if st.button("📥 Publicar resultado", use_container_width=True, type="primary"):
+                if st.button("📥 Publicar resultado", use_container_width=True, type="primary", key=f"adm_publish_result_{sel.match_id}"):
                     ok, msg = STORE.publish_result(sel.match_id, int(rh), int(ra))
                     if ok:
                         STORE.append_audit(
@@ -2103,7 +2116,7 @@ with tab_admin_tab:
                         ),
                         key="del_id",
                     )
-                    if st.button("🗑️ Eliminar resultado", type="secondary"):
+                    if st.button("🗑️ Eliminar resultado", type="secondary", key=f"adm_delete_result_{del_id}"):
                         STORE.delete_result(del_id)
                         STORE.append_audit(
                             st.session_state.current_user or "admin", "result_deleted",
@@ -2150,7 +2163,7 @@ with tab_admin_tab:
             blk_row  = blk_matches[blk_idx]
             cur_lock = bool(LOCKS.get(blk_row.match_id, False))
             new_lock = st.toggle("Bloqueo manual activado", value=cur_lock, key="blk_toggle")
-            if st.button("Guardar bloqueo", use_container_width=True):
+            if st.button("Guardar bloqueo", use_container_width=True, key=f"adm_save_lock_{blk_row.match_id}"):
                 STORE.set_lock(blk_row.match_id, new_lock)
                 STORE.append_audit(
                     st.session_state.current_user or "admin", "manual_lock_updated",
@@ -2195,7 +2208,7 @@ with tab_admin_tab:
                 key="adm_special_points",
             )
             csave, cdel = st.columns(2)
-            if csave.button("🏅 Guardar ganador oficial", type="primary", use_container_width=True):
+            if csave.button("🏅 Guardar ganador oficial", type="primary", use_container_width=True, key=f"adm_save_special_{cat_key}"):
                 if not official_val.strip():
                     st.error("Indica el ganador oficial.")
                 else:
@@ -2207,7 +2220,7 @@ with tab_admin_tab:
                     invalidate_cache()
                     st.success("Premio especial guardado.")
                     st.rerun()
-            if cdel.button("🗑️ Eliminar ganador oficial", type="secondary", use_container_width=True):
+            if cdel.button("🗑️ Eliminar ganador oficial", type="secondary", use_container_width=True, key=f"adm_delete_special_{cat_key}"):
                 STORE.delete_special_result(cat_key)
                 STORE.append_audit(
                     st.session_state.current_user or "admin", "special_result_deleted",
@@ -2245,6 +2258,7 @@ with tab_admin_tab:
                     file_name="quinela_pronosticos_especiales.csv",
                     mime="text/csv",
                     use_container_width=True,
+                    key="dl_special_predictions_csv",
                 )
 
         # ── Participantes + reset de contraseña ───────────────
@@ -2259,6 +2273,7 @@ with tab_admin_tab:
                     file_name="quinela_participantes.csv",
                     mime="text/csv",
                     use_container_width=True,
+                    key="dl_participants_csv",
                 )
             else:
                 st.info("Aún no hay participantes.")
@@ -2271,6 +2286,7 @@ with tab_admin_tab:
                     file_name="quinela_pronosticos_detalle.csv",
                     mime="text/csv",
                     use_container_width=True,
+                    key="dl_all_predictions_csv",
                 )
 
             st.divider()
@@ -2286,7 +2302,7 @@ with tab_admin_tab:
                     "Nueva contraseña temporal (mín. 8 caracteres)",
                     type="password", key="reset_pw"
                 )
-                if st.button("🔑 Aplicar nueva contraseña", use_container_width=True):
+                if st.button("🔑 Aplicar nueva contraseña", use_container_width=True, key=f"reset_password_{reset_u}"):
                     if len(reset_pw) < 8:
                         st.error("La contraseña debe tener al menos 8 caracteres.")
                     else:
@@ -2342,6 +2358,7 @@ with tab_admin_tab:
                 file_name=f"quinela_backup_{datetime.now(APP_TZ).strftime('%Y%m%d_%H%M')}.json",
                 mime="application/json",
                 use_container_width=True,
+                key="dl_backup_json",
             )
             st.download_button(
                 "⬇️ Descargar calendario CSV",
@@ -2349,8 +2366,9 @@ with tab_admin_tab:
                 file_name="matches_2026.csv",
                 mime="text/csv",
                 use_container_width=True,
+                key="dl_calendar_csv",
             )
 
-        if st.button("Salir de administración", type="secondary"):
+        if st.button("Salir de administración", type="secondary", key="adm_logout_button"):
             st.session_state.is_admin = False
             st.rerun()

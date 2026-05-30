@@ -1,18 +1,52 @@
-# Quinela Mundial 2026 · Posgrado IMP — v6 diseño
+# Quinela Mundial 2026 · Posgrado IMP — v8 dos etapas
 
-Versión reforzada para GitHub + Streamlit Cloud + Supabase, con rediseño visual orientado a uso institucional.
+Versión reforzada para GitHub + Streamlit Cloud + Supabase, con diseño institucional y calendario completo de 104 partidos: fase de grupos y eliminatorias hasta la final.
 
 ## Archivos principales
 
 ```text
 app.py                    ← App principal
-matches_2026.csv          ← Calendario y kickoff_at
-requirements.txt          ← Dependencias de Streamlit Cloud, ya incluye Supabase
+matches_2026.csv          ← Calendario completo M001–M104
+requirements.txt          ← Dependencias de Streamlit Cloud, incluido Supabase
 supabase_schema.sql       ← Tablas de Supabase, incluida auditoría
 tools/hash_password.py    ← Genera ADMIN_PASSWORD_HASH seguro
 data/.gitkeep             ← Mantiene carpeta data/ para modo local
 .streamlit/config.toml    ← Tema visual
 .gitignore                ← Evita subir secrets y datos locales
+```
+
+## Qué cambió en v8
+
+- Se agregan **dos etapas**: fase de grupos y eliminatorias.
+- `matches_2026.csv` ahora incluye **104 partidos**:
+  - M001–M072: fase de grupos.
+  - M073–M088: 16avos / Round of 32.
+  - M089–M096: octavos.
+  - M097–M100: cuartos.
+  - M101–M102: semifinales.
+  - M103: tercer lugar.
+  - M104: final.
+- Nueva pestaña **Eliminatorias** con tablero visual tipo bracket.
+- Filtros por **Etapa** y **Grupo/Ronda** en pronósticos y resultados.
+- Avance del usuario separado por etapa.
+- Ranking global acumulado para todos los partidos cargados.
+- Panel admin actualizado para publicar resultados y bloqueos por grupo/ronda.
+
+## Importante sobre eliminatorias
+
+Las eliminatorias se cargan con placeholders, por ejemplo:
+
+```text
+Ganador Grupo A vs 3.º Grupo C/E/F/H/I
+Ganador M073 vs Ganador M075
+```
+
+Cuando se definan los clasificados, puedes actualizar `matches_2026.csv` reemplazando esos textos por los equipos reales y hacer redeploy. No se requiere migración de base de datos porque todos los pronósticos, resultados y bloqueos se guardan por `match_id`.
+
+En esta versión los `kickoff_at` de eliminatorias están vacíos para evitar bloqueos automáticos con horarios dudosos. El administrador puede bloquear manualmente desde la pestaña **Administración → Bloqueos manuales**. Si deseas bloqueo automático, llena `kickoff_at` en formato ISO, por ejemplo:
+
+```text
+2026-07-19T13:00:00-06:00
 ```
 
 ## Secrets recomendados en Streamlit Cloud
@@ -44,35 +78,11 @@ También funciona `ADMIN_PASSWORD = "..."`, pero `ADMIN_PASSWORD_HASH` es prefer
 
 1. Crea proyecto en Supabase.
 2. Abre **SQL Editor**.
-3. Ejecuta todo el contenido de `supabase_schema.sql`.
+3. Ejecuta todo el contenido de `supabase_schema.sql` si es una instalación nueva.
 4. Copia `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY` a los Secrets de Streamlit.
 5. Reinicia/redeploy la app.
 
-`requirements.txt` ya incluye `supabase>=2.6`, por lo que Streamlit Cloud instalará el backend sin tener que renombrar archivos.
-
-## Mejoras v6
-
-- Rediseño visual completo: hero institucional, gradientes IMP, tarjetas KPI, podio y mejores estados vacíos.
-- Tarjetas de partido más claras: ID, grupo, estado, sede, kickoff, resultado oficial y pronóstico personal.
-- Progreso de pronósticos por usuario y por grupo.
-- Vista de resultados con KPIs de avance y filtros más claros.
-- Gráfica Top 10 por puntos cuando ya existan resultados.
-- Se mantienen las mejoras técnicas previas: Supabase incluido, puntos configurables, auditoría, exports CSV/JSON, bloqueo automático/manual y reset de contraseñas.
-- Validación básica de calendario: IDs duplicados, kickoff faltante o formato inválido.
-- Descargas CSV con `utf-8-sig` para abrir correctamente en Excel.
-
-## Actualización desde v5
-
-Si ya tienes v5 funcionando, normalmente basta reemplazar estos archivos:
-
-```text
-app.py
-README_DEPLOY.md
-requirements.txt
-.streamlit/config.toml
-```
-
-No necesitas ejecutar una migración nueva si ya aplicaste la migración v3→v4 y tus tablas incluyen auditoría.
+Si ya tienes v5/v6/v7 funcionando, normalmente **no necesitas migración nueva** para v8. El calendario crece a M104, pero la base ya acepta cualquier `match_id`.
 
 ## Ejecución local
 
@@ -99,8 +109,23 @@ Sin Supabase configurado, la app usará `data/quinela_data.json`. Ese modo sirve
 
 Desempate: Puntos → Exactos → Acertados → menor diferencia total de marcador → mayor número de pronósticos.
 
+## Actualización desde v7
+
+Reemplaza/sube estos archivos:
+
+```text
+app.py
+matches_2026.csv
+README_DEPLOY.md
+requirements.txt
+.streamlit/config.toml
+```
+
+No subas secretos ni datos locales.
+
 ## Notas operativas
 
 - No subas `.streamlit/secrets.toml`, `.env`, `.env.local` ni `data/quinela_data.json`.
 - Para cerrar registros cuando empiece el torneo, pon `ENABLE_REGISTRATION = false` en Secrets.
-- Si cambia un horario, edita `matches_2026.csv`, confirma el `kickoff_at` y redeploy.
+- Si cambia un horario, edita `matches_2026.csv`, confirma `kickoff_at` y redeploy.
+- Para eliminatorias, actualiza los placeholders cuando estén definidos los clasificados.

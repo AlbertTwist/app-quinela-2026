@@ -1,3 +1,2 @@
-# Instala además de requirements.txt si usas Supabase como backend.
-# pip install -r requirements.txt -r requirements-supabase.txt
+# Compatibilidad histórica: Supabase ya viene incluido en requirements.txt.
 supabase>=2.6

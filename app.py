@@ -1,13 +1,11 @@
 """
 Quinela Mundial 2026 · Posgrado IMP
 =====================================
-v6 — Diseño y experiencia sobre v5:
-  - Rediseño visual premium con identidad IMP, hero, KPIs, podio y tarjetas
-  - Tarjetas de partido más claras con estado, resultado oficial y pronóstico personal
-  - Progreso por grupos para cada usuario
-  - Estados vacíos más explicativos
-  - Bloque de actividad rápida para orientar al participante
-  - Mantiene las mejoras técnicas de v5: Supabase, auditoría, bloqueos, exports y seguridad
+v8 — Dos etapas + diseño plus:
+  - Fase de grupos + eliminatorias completas (M073–M104: 16avos, octavos, cuartos, semifinales, tercer lugar y final)
+  - Filtros por etapa y ronda, tablero visual de bracket y ranking global
+  - Mantiene Supabase, auditoría, bloqueos, exports, seguridad y diseño institucional
+  - Las eliminatorias se cargan con placeholders oficiales; cuando se definan equipos, basta actualizar matches_2026.csv
 """
 
 from __future__ import annotations
@@ -202,6 +200,14 @@ section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p { color:v
 
 .quick-card { margin:10px 0 16px; }
 .quick-card strong { color:var(--verde); }
+.stage-strip { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:10px; margin:12px 0 18px; }
+.stage-mini { background:rgba(255,255,255,.90); border:1px solid var(--linea); border-radius:16px; padding:12px 14px; box-shadow:var(--sombra-soft); }
+.stage-mini .label { color:var(--gris); font-size:.72rem; font-weight:800; letter-spacing:.06em; text-transform:uppercase; }
+.stage-mini .value { font-family:'Bebas Neue'; font-size:1.8rem; line-height:1; color:var(--verde); margin-top:4px; }
+.bracket-card { background:rgba(255,255,255,.94); border:1px solid rgba(0,99,65,.14); border-radius:18px; padding:14px 16px; box-shadow:var(--sombra-soft); height:100%; }
+.bracket-card .round { color:var(--oro); font-weight:900; font-size:.76rem; letter-spacing:.07em; text-transform:uppercase; }
+.bracket-card .teams { font-weight:900; color:var(--tinta); margin:5px 0 6px; }
+.bracket-card .meta { color:var(--gris); font-size:.82rem; }
 
 .stTabs [data-baseweb="tab-list"] { gap:4px; background:rgba(0,99,65,.08); border-radius:14px; padding:6px; }
 .stTabs [data-baseweb="tab"] { font-weight:800; border-radius:10px; padding:8px 13px; }
@@ -631,10 +637,46 @@ def validate_matches(df: pd.DataFrame) -> list[str]:
     return warnings
 
 MATCHES          = load_matches()
-GROUPS           = sorted(MATCHES["group"].dropna().unique().tolist()) if not MATCHES.empty else []
-MATCH_IDX        = {r.match_id: r for r in MATCHES.itertuples(index=False)} if not MATCHES.empty else {}
+RAW_BUCKETS       = sorted(MATCHES["group"].dropna().unique().tolist()) if not MATCHES.empty else []
+GROUP_ORDER       = list("ABCDEFGHIJKL")
+ROUND_ORDER       = ["16avos", "Octavos", "Cuartos", "Semifinales", "Tercer lugar", "Final"]
+GROUPS            = [g for g in GROUP_ORDER if g in RAW_BUCKETS]
+KNOCKOUT_ROUNDS   = [r for r in ROUND_ORDER if r in RAW_BUCKETS]
+BUCKETS           = GROUPS + KNOCKOUT_ROUNDS
+MATCH_IDX         = {r.match_id: r for r in MATCHES.itertuples(index=False)} if not MATCHES.empty else {}
 CALENDAR_WARNINGS = validate_matches(MATCHES)
-TOTAL_MATCHES    = len(MATCHES)
+TOTAL_MATCHES     = len(MATCHES)
+GROUP_MATCHES     = int(MATCHES["group"].isin(GROUPS).sum()) if not MATCHES.empty else 0
+KNOCKOUT_MATCHES  = int(MATCHES["group"].isin(KNOCKOUT_ROUNDS).sum()) if not MATCHES.empty else 0
+
+# ──────────────────────────────────────────────────────────────
+# ETAPAS / RONDAS
+# ──────────────────────────────────────────────────────────────
+def is_group_bucket(bucket: str) -> bool:
+    return str(bucket) in GROUPS
+
+def is_group_stage(row: Any) -> bool:
+    return is_group_bucket(getattr(row, "group", ""))
+
+def is_knockout_stage(row: Any) -> bool:
+    return str(getattr(row, "group", "")) in KNOCKOUT_ROUNDS
+
+def stage_label_from_bucket(bucket: str) -> str:
+    return "Fase de grupos" if is_group_bucket(bucket) else "Eliminatorias"
+
+def bucket_label_from_value(bucket: str) -> str:
+    return f"Grupo {bucket}" if is_group_bucket(bucket) else str(bucket)
+
+def bucket_label(row: Any) -> str:
+    return bucket_label_from_value(str(getattr(row, "group", "")))
+
+def bucket_format(bucket: str) -> str:
+    if bucket == "Todos":
+        return "Todos"
+    return bucket_label_from_value(bucket)
+
+def match_title(row: Any) -> str:
+    return f"{getattr(row, 'home', '')} vs {getattr(row, 'away', '')}"
 
 # ──────────────────────────────────────────────────────────────
 # LÓGICA DE JUEGO
@@ -732,7 +774,8 @@ def build_predictions_export(users, all_preds, results) -> pd.DataFrame:
             rows.append({
                 "usuario":    name_by_key.get(ukey, ukey),
                 "match_id":   mid,
-                "grupo":      getattr(match, "group", ""),
+                "etapa":      stage_label_from_bucket(str(getattr(match, "group", ""))) if match else "",
+                "grupo_ronda": bucket_label_from_value(str(getattr(match, "group", ""))) if match else "",
                 "partido":    f"{getattr(match, 'home', '')} vs {getattr(match, 'away', '')}",
                 "pronostico": f"{ph}-{pa}",
                 "resultado":  result_txt,
@@ -743,7 +786,7 @@ def build_predictions_export(users, all_preds, results) -> pd.DataFrame:
 
 
 # ──────────────────────────────────────────────────────────────
-# COMPONENTES VISUALES v6
+# COMPONENTES VISUALES v8
 # ──────────────────────────────────────────────────────────────
 def pct_txt(num: int, den: int) -> str:
     if den <= 0:
@@ -826,6 +869,21 @@ def group_progress_df(my_preds: dict) -> pd.DataFrame:
         })
     return pd.DataFrame(rows)
 
+def stage_progress_df(my_preds: dict) -> pd.DataFrame:
+    specs = [("Fase de grupos", GROUPS), ("Eliminatorias", KNOCKOUT_ROUNDS)]
+    rows = []
+    for stage, buckets in specs:
+        ids = [r.match_id for r in MATCHES.itertuples(index=False) if r.group in buckets]
+        done = sum(1 for mid in ids if mid in my_preds)
+        total = len(ids)
+        rows.append({
+            "Etapa": stage,
+            "Pronosticados": done,
+            "Total": total,
+            "Avance": round((done / total) * 100) if total else 0,
+        })
+    return pd.DataFrame(rows)
+
 def match_state(row: Any, locks: dict, results: dict) -> tuple[str, str]:
     result = results.get(row.match_id)
     locked = is_locked(row, locks, results)
@@ -838,10 +896,12 @@ def match_state(row: Any, locks: dict, results: dict) -> tuple[str, str]:
 # FIX: render_match_header ahora recibe locks/results explícitamente y SÍ se usa en los tabs
 def render_match_card_header(row: Any, locks: dict, results: dict):
     b_status, b_text = match_state(row, locks, results)
+    bucket_text = bucket_label(row)
+    stage_text  = stage_label_from_bucket(str(row.group))
     st.markdown(f"""
     <div class="match-top">
       <div>
-        <span class="badge b-group">Grupo {row.group}</span>
+        <span class="badge b-group">{bucket_text}</span>
         <span class="badge {b_status}">{b_text}</span>
       </div>
       <span class="badge b-pending">{row.match_id}</span>
@@ -851,7 +911,7 @@ def render_match_card_header(row: Any, locks: dict, results: dict):
       <span class="vs-chip">VS</span>
       <span class="team-name">{row.away}</span>
     </div>
-    <div class="match-meta">📅 {fmt_kickoff(row)} · 📍 {row.venue}</div>
+    <div class="match-meta">🏁 {stage_text} · 📅 {fmt_kickoff(row)} · 📍 {row.venue}</div>
     """, unsafe_allow_html=True)
 
 # FIX: gráfica Top-10 con colores IMP usando plotly (no st.bar_chart)
@@ -920,7 +980,7 @@ def render_countdown():
         <div style="font-size:.74rem;font-weight:800;text-transform:uppercase;
              letter-spacing:.07em;color:var(--gris)">Próximo partido</div>
         <div style="font-weight:800;color:var(--tinta)">
-          {row.home} vs {row.away} — Grupo {row.group}
+          {row.home} vs {row.away} — {bucket_label(row)}
         </div>
         <div style="font-size:.88rem;color:var(--verde);font-weight:700">
           {ko.strftime('%d %b · %H:%M CDMX')} · <strong>{txt}</strong>
@@ -964,7 +1024,8 @@ def render_coverage_heatmap(all_preds: dict, n_users: int):
             rows.append({
                 "ID":      row.match_id,
                 "Partido": f"{row.home} vs {row.away}",
-                "Grupo":   row.group,
+                "Etapa":   stage_label_from_bucket(str(row.group)),
+                "Grupo/Ronda": bucket_label(row),
                 "Pronósticos": cnt,
                 "Cobertura %": round((cnt / n_users) * 100),
             })
@@ -978,7 +1039,8 @@ def render_coverage_heatmap(all_preds: dict, n_users: int):
                     "Cobertura %", min_value=0, max_value=100, format="%d%%"
                 ),
                 "Pronósticos": st.column_config.NumberColumn(width="small"),
-                "Grupo":       st.column_config.TextColumn(width="small"),
+                "Etapa":       st.column_config.TextColumn(width="medium"),
+                "Grupo/Ronda": st.column_config.TextColumn(width="medium"),
                 "ID":          st.column_config.TextColumn(width="small"),
             },
         )
@@ -1032,7 +1094,7 @@ st.markdown("""
     <span class="hero-pill">🎯 Quinela institucional</span>
   </div>
   <h1 class="hero-title">Quinela Mundial 2026</h1>
-  <p class="hero-subtitle">Pronostica, compite y sigue la tabla general.</p>
+  <p class="hero-subtitle">Pronostica fase de grupos y eliminatorias hasta la final. Sigue el ranking global con una experiencia clara, visual y lista para la comunidad.</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -1108,7 +1170,7 @@ with st.sidebar:
         f"🎯 Marcador exacto = **{POINTS_EXACT} pts**\n\n"
         f"✅ Resultado correcto = **{POINTS_RESULT} pt(s)**\n\n"
         "❌ Fallo = **0 pts**\n\n"
-        "🔒 Los pronósticos se bloquean al inicio de cada partido."
+        "🔒 Los pronósticos se bloquean al inicio de cada partido o manualmente en eliminatorias."
     )
     sb_icon = "☁️" if isinstance(STORE, SupabaseStore) else "💾"
     st.caption(f"{sb_icon} Base de datos: **{STORE.name}** · 🕐 Zona: **{APP_TZ_NAME}**")
@@ -1118,8 +1180,8 @@ with st.sidebar:
 # ──────────────────────────────────────────────────────────────
 # PESTAÑAS
 # ──────────────────────────────────────────────────────────────
-tab_table, tab_preds, tab_results_tab, tab_rules_tab, tab_admin_tab = st.tabs([
-    "🏆 Tabla General", "📝 Mis Pronósticos", "📊 Resultados", "📘 Reglamento", "⚙️ Administración"
+tab_table, tab_preds, tab_results_tab, tab_bracket_tab, tab_rules_tab, tab_admin_tab = st.tabs([
+    "🏆 Tabla General", "📝 Mis Pronósticos", "📊 Resultados", "🧬 Eliminatorias", "📘 Reglamento", "⚙️ Administración"
 ])
 
 # ════════════════════════════════════════
@@ -1189,11 +1251,12 @@ with tab_table:
         sum(1 for r in MATCHES.itertuples(index=False) if is_locked(r, LOCKS, RESULTS))
         if not MATCHES.empty else 0
     )
-    k1, k2, k3, k4 = st.columns(4)
+    k1, k2, k3, k4, k5 = st.columns(5)
     render_kpi(k1, "Resultados", f"{len(RESULTS)} / {TOTAL_MATCHES}", "Marcadores oficiales cargados", "📊")
     render_kpi(k2, "Participantes", len(USERS), "Usuarios registrados", "👥")
     render_kpi(k3, "Pronósticos", sum(len(v) for v in ALL_PREDS.values()), "Registros totales guardados", "📝")
     render_kpi(k4, "Bloqueados", n_bloqueados, "Partidos cerrados a edición", "🔒")
+    render_kpi(k5, "Etapas", "2", f"{GROUP_MATCHES} grupos + {KNOCKOUT_MATCHES} eliminatorias", "🏁")
 
     # FIX: gráfica con colores IMP en lugar de st.bar_chart sin color
     if not STANDINGS.empty and len(RESULTS) > 0:
@@ -1220,11 +1283,23 @@ with tab_preds:
         st.markdown(f"""
         <div class="quick-card">
           <strong>Tu avance:</strong> {len(my_preds)} de {TOTAL_MATCHES} partidos pronosticados ·
-          <strong>{pending_count}</strong> pendientes. Usa los filtros para ir grupo por grupo.
+          <strong>{pending_count}</strong> pendientes. Usa los filtros para moverte entre grupos y eliminatorias.
         </div>
         """, unsafe_allow_html=True)
 
-        with st.expander("📈 Ver avance por grupos", expanded=False):
+        stage_df = stage_progress_df(my_preds)
+        st.markdown("#### Avance por etapa")
+        st.dataframe(
+            stage_df,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Avance": st.column_config.ProgressColumn("Avance", min_value=0, max_value=100, format="%d%%"),
+                "Etapa": st.column_config.TextColumn(width="medium"),
+            },
+        )
+
+        with st.expander("📈 Ver avance detallado por grupo", expanded=False):
             gp = group_progress_df(my_preds)
             st.dataframe(
                 gp,
@@ -1236,19 +1311,24 @@ with tab_preds:
                 },
             )
 
-        fc1, fc2, fc3 = st.columns([1, 2, 2])
-        g_filter = fc1.selectbox("Grupo", ["Todos"] + GROUPS, key="f_group")
-        t_filter = fc2.text_input("Buscar equipo", placeholder="México, Brasil…", key="f_text")
-        s_filter = fc3.selectbox(
+        fc1, fc2, fc3, fc4 = st.columns([1.15, 1.35, 2, 1.5])
+        stage_filter = fc1.selectbox("Etapa", ["Todas", "Grupos", "Eliminatorias"], key="f_stage")
+        g_filter = fc2.selectbox("Grupo/Ronda", ["Todos"] + BUCKETS, key="f_group", format_func=bucket_format)
+        t_filter = fc3.text_input("Buscar equipo", placeholder="México, Brasil, Ganador M073…", key="f_text")
+        s_filter = fc4.selectbox(
             "Estado", ["Todos", "Abiertos", "Bloqueados", "Con resultado"], key="f_status"
         )
 
         def match_visible(row):
             locked     = is_locked(row, LOCKS, RESULTS)
             has_result = row.match_id in RESULTS
+            if stage_filter == "Grupos" and not is_group_stage(row):
+                return False
+            if stage_filter == "Eliminatorias" and not is_knockout_stage(row):
+                return False
             if g_filter != "Todos" and row.group != g_filter:
                 return False
-            if t_filter and t_filter.casefold() not in f"{row.home} {row.away}".casefold():
+            if t_filter and t_filter.casefold() not in f"{row.home} {row.away} {row.match_id}".casefold():
                 return False
             if s_filter == "Abiertos"      and locked:         return False
             if s_filter == "Bloqueados"    and not locked:     return False
@@ -1343,30 +1423,37 @@ with tab_results_tab:
         "Consulta marcadores cargados, sedes y avance del calendario."
     )
 
-    rr1, rr2, rr3 = st.columns(3)
+    rr1, rr2, rr3, rr4 = st.columns(4)
     render_kpi(rr1, "Con resultado", f"{len(RESULTS)} / {TOTAL_MATCHES}", f"{pct_txt(len(RESULTS), TOTAL_MATCHES)} del calendario", "✅")
     render_kpi(rr2, "Pendientes", max(0, TOTAL_MATCHES - len(RESULTS)), "Partidos sin marcador oficial", "⏳")
-    render_kpi(rr3, "Grupos", len(GROUPS), "Fase de grupos cargada", "🌎")
+    render_kpi(rr3, "Grupos", GROUP_MATCHES, "Primera etapa", "🌎")
+    render_kpi(rr4, "Eliminatorias", KNOCKOUT_MATCHES, "Segunda etapa", "🏆")
 
-    rc1, rc2 = st.columns([1, 3])
-    rg       = rc1.selectbox("Filtrar por grupo", ["Todos"] + GROUPS, key="res_group")
-    show_all = rc2.checkbox("Mostrar también partidos sin resultado", value=False)
+    rc1, rc2, rc3 = st.columns([1.1, 1.4, 2.5])
+    res_stage = rc1.selectbox("Etapa", ["Todas", "Grupos", "Eliminatorias"], key="res_stage")
+    rg        = rc2.selectbox("Grupo/Ronda", ["Todos"] + BUCKETS, key="res_group", format_func=bucket_format)
+    show_all  = rc3.checkbox("Mostrar también partidos sin resultado", value=False)
 
     rows_res = []
     for row in MATCHES.itertuples(index=False):
+        if res_stage == "Grupos" and not is_group_stage(row):
+            continue
+        if res_stage == "Eliminatorias" and not is_knockout_stage(row):
+            continue
         if rg != "Todos" and row.group != rg:
             continue
         res = RESULTS.get(row.match_id)
         if not res and not show_all:
             continue
         rows_res.append({
-            "Grupo":     row.group,
-            "ID":        row.match_id,
-            "Local":     row.home,
-            "Resultado": f"{res['home_goals']} – {res['away_goals']}" if res else "—",
-            "Visitante": row.away,
-            "Sede":      row.venue,
-            "Fecha":     row.match_date,
+            "Etapa":      stage_label_from_bucket(str(row.group)),
+            "Grupo/Ronda": bucket_label(row),
+            "ID":         row.match_id,
+            "Local":      row.home,
+            "Resultado":  f"{res['home_goals']} – {res['away_goals']}" if res else "—",
+            "Visitante":  row.away,
+            "Sede":       row.venue,
+            "Fecha":      row.match_date,
         })
     if rows_res:
         st.dataframe(
@@ -1376,6 +1463,8 @@ with tab_results_tab:
             column_config={
                 "Resultado": st.column_config.TextColumn(width="small"),
                 "ID":        st.column_config.TextColumn(width="small"),
+                "Etapa":     st.column_config.TextColumn(width="medium"),
+                "Grupo/Ronda": st.column_config.TextColumn(width="medium"),
             },
         )
         st.caption(f"Mostrando {len(rows_res)} partidos · {len(RESULTS)} con resultado cargado.")
@@ -1383,7 +1472,47 @@ with tab_results_tab:
         render_empty_state("📊", "Sin resultados para este filtro", "Activa la casilla para ver partidos sin resultado o selecciona otro grupo.")
 
 # ════════════════════════════════════════
-# 4 · REGLAMENTO  (generado dinámicamente)
+# 4 · ELIMINATORIAS / BRACKET
+# ════════════════════════════════════════
+with tab_bracket_tab:
+    render_section_title(
+        "Etapa de eliminatorias",
+        "Visualiza 16avos, octavos, cuartos, semifinales, tercer lugar y final. Los placeholders se actualizan en matches_2026.csv cuando se definan los clasificados."
+    )
+
+    b1, b2, b3, b4 = st.columns(4)
+    ko_results = sum(1 for r in MATCHES.itertuples(index=False) if is_knockout_stage(r) and r.match_id in RESULTS)
+    ko_locked  = sum(1 for r in MATCHES.itertuples(index=False) if is_knockout_stage(r) and is_locked(r, LOCKS, RESULTS))
+    render_kpi(b1, "Partidos", KNOCKOUT_MATCHES, "De M073 a M104", "🏆")
+    render_kpi(b2, "Rondas", len(KNOCKOUT_ROUNDS), "16avos a final", "🧬")
+    render_kpi(b3, "Con resultado", f"{ko_results} / {KNOCKOUT_MATCHES}", "Marcadores cargados", "✅")
+    render_kpi(b4, "Bloqueados", ko_locked, "Cerrados a edición", "🔒")
+
+    if KNOCKOUT_MATCHES == 0:
+        render_empty_state("🧬", "Sin eliminatorias cargadas", "Agrega los partidos M073–M104 en matches_2026.csv.")
+    else:
+        for rnd in KNOCKOUT_ROUNDS:
+            rnd_matches = [r for r in MATCHES.itertuples(index=False) if r.group == rnd]
+            with st.expander(f"{rnd} · {len(rnd_matches)} partidos", expanded=(rnd in ["16avos", "Octavos"])):
+                for start in range(0, len(rnd_matches), 2):
+                    cols = st.columns(2)
+                    for offset, col in enumerate(cols):
+                        if start + offset >= len(rnd_matches):
+                            continue
+                        row = rnd_matches[start + offset]
+                        res = RESULTS.get(row.match_id)
+                        with col:
+                            result_txt = f" · Resultado: {res['home_goals']}–{res['away_goals']}" if res else ""
+                            st.markdown(f"""
+                            <div class="bracket-card">
+                              <div class="round">{row.match_id} · {rnd}</div>
+                              <div class="teams">{row.home} <span style="color:var(--gris)">vs</span> {row.away}</div>
+                              <div class="meta">📅 {fmt_kickoff(row)} · 📍 {row.venue}{result_txt}</div>
+                            </div>
+                            """, unsafe_allow_html=True)
+
+# ════════════════════════════════════════
+# 5 · REGLAMENTO  (generado dinámicamente)
 # ════════════════════════════════════════
 with tab_rules_tab:
     render_section_title(
@@ -1395,7 +1524,7 @@ with tab_rules_tab:
     r1, r2, r3 = st.columns(3)
     render_kpi(r1, "Marcador exacto",    POINTS_EXACT,  "Adivinaste el resultado y el marcador", "🎯")
     render_kpi(r2, "Resultado correcto", POINTS_RESULT, "Adivinaste quién ganó (o empate)", "✅")
-    render_kpi(r3, "Puntos máximos",     TOTAL_MATCHES * POINTS_EXACT, f"{TOTAL_MATCHES} partidos × {POINTS_EXACT} pts", "🏆")
+    render_kpi(r3, "Puntos máximos",     TOTAL_MATCHES * POINTS_EXACT, f"{GROUP_MATCHES} grupos + {KNOCKOUT_MATCHES} eliminatorias", "🏆")
 
     st.markdown(f"""
 ---
@@ -1410,10 +1539,14 @@ with tab_rules_tab:
 | 5 | Mayor cantidad de partidos pronosticados |
 
 ---
+#### Dos etapas de competencia
+
+La quinela considera **fase de grupos** y **eliminatorias**: 16avos, octavos, cuartos, semifinales, partido por tercer lugar y final. El ranking global suma todos los partidos cargados en el calendario.
+
 #### Bloqueo de pronósticos
 
-Cada partido se bloquea **automáticamente** al llegar su hora de inicio.
-Si la hora no está definida, el administrador puede bloquear manualmente desde el panel.
+Cada partido se bloquea **automáticamente** al llegar su hora de inicio si `kickoff_at` está definido.
+Si la hora no está definida —especialmente en eliminatorias— el administrador puede bloquear manualmente desde el panel.
 Una vez bloqueado, el pronóstico **ya no puede modificarse**.
 
 #### Edición libre hasta el cierre
@@ -1422,14 +1555,14 @@ Puedes cambiar tu pronóstico **cuantas veces quieras** mientras el partido est�
 Siempre se guarda el último valor confirmado.
 
 ---
-*{TOTAL_MATCHES} partidos · Fase de grupos · {len(GROUPS)} grupos de 4 equipos*
+*{TOTAL_MATCHES} partidos · 2 etapas · {GROUP_MATCHES} de grupos + {KNOCKOUT_MATCHES} de eliminatorias*
     """)
 
     if CALENDAR_WARNINGS:
         st.warning("⚠️ Revisión de calendario: " + " | ".join(CALENDAR_WARNINGS))
 
 # ════════════════════════════════════════
-# 5 · ADMINISTRACIÓN
+# 6 · ADMINISTRACIÓN
 # ════════════════════════════════════════
 with tab_admin_tab:
     st.subheader("Panel de administración")
@@ -1462,10 +1595,10 @@ with tab_admin_tab:
             st.caption("Publicar activa el bloqueo automáticamente en una sola operación.")
 
             if not MATCHES.empty:
-                adm_g         = st.selectbox("Grupo", GROUPS, key="adm_group")
+                adm_g         = st.selectbox("Grupo/Ronda", BUCKETS, key="adm_group", format_func=bucket_format)
                 group_matches = [r for r in MATCHES.itertuples(index=False) if r.group == adm_g]
                 pendientes    = sum(1 for r in group_matches if r.match_id not in RESULTS)
-                st.info(f"Partidos sin resultado en Grupo {adm_g}: **{pendientes}**")
+                st.info(f"Partidos sin resultado en {bucket_label_from_value(adm_g)}: **{pendientes}**")
 
                 adm_idx = st.selectbox(
                     "Partido",
@@ -1534,7 +1667,7 @@ with tab_admin_tab:
                 "Úsalo cuando el partido inicia pero aún no tienes el resultado, "
                 "o cuando `kickoff_at` no está definido en el CSV."
             )
-            blk_g       = st.selectbox("Grupo", GROUPS, key="blk_group")
+            blk_g       = st.selectbox("Grupo/Ronda", BUCKETS, key="blk_group", format_func=bucket_format)
             blk_matches = [r for r in MATCHES.itertuples(index=False) if r.group == blk_g]
 
             blk_rows = []

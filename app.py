@@ -782,14 +782,16 @@ def render_section_title(title: str, subtitle: str = ""):
     </div>
     """, unsafe_allow_html=True)
 
+# FIX: podio dinámico — muestra min(3, len(standings)) lugares reales
 def render_podium(standings: pd.DataFrame):
     if standings.empty:
         return
-    cols = st.columns(3)
     medals = ["🥇", "🥈", "🥉"]
+    n      = min(3, len(standings))
+    cols   = st.columns(3)
     for i in range(3):
         with cols[i]:
-            if i < len(standings):
+            if i < n:
                 r = standings.iloc[i]
                 st.markdown(f"""
                 <div class="podium-card place-{i+1}">
@@ -803,19 +805,25 @@ def render_podium(standings: pd.DataFrame):
                 st.markdown(f"""
                 <div class="podium-card place-{i+1}">
                   <div class="podium-rank">{medals[i]}</div>
-                  <div class="podium-user">Lugar disponible</div>
-                  <div class="podium-points">—</div>
-                  <div class="podium-meta">Esperando participantes</div>
+                  <div class="podium-user" style="opacity:.45">Lugar disponible</div>
+                  <div class="podium-points" style="opacity:.3">—</div>
+                  <div class="podium-meta">Aún no hay suficientes participantes</div>
                 </div>
                 """, unsafe_allow_html=True)
 
+# FIX: recibe my_preds como parámetro en lugar de capturarlo por closure
 def group_progress_df(my_preds: dict) -> pd.DataFrame:
     rows = []
     for g in GROUPS:
-        ids = [r.match_id for r in MATCHES.itertuples(index=False) if r.group == g]
-        done = sum(1 for mid in ids if mid in my_preds)
+        ids   = [r.match_id for r in MATCHES.itertuples(index=False) if r.group == g]
+        done  = sum(1 for mid in ids if mid in my_preds)
         total = len(ids)
-        rows.append({"Grupo": g, "Pronosticados": done, "Total": total, "Avance": round((done / total) * 100) if total else 0})
+        rows.append({
+            "Grupo":         g,
+            "Pronosticados": done,
+            "Total":         total,
+            "Avance":        round((done / total) * 100) if total else 0,
+        })
     return pd.DataFrame(rows)
 
 def match_state(row: Any, locks: dict, results: dict) -> tuple[str, str]:
@@ -827,27 +835,156 @@ def match_state(row: Any, locks: dict, results: dict) -> tuple[str, str]:
         return "b-locked", "Bloqueado"
     return "b-open", "Abierto"
 
-def render_match_header(row: Any, locked: bool, result: dict | None):
-    b_status, b_text = match_state(row, LOCKS, RESULTS)
+# FIX: render_match_header ahora recibe locks/results explícitamente y SÍ se usa en los tabs
+def render_match_card_header(row: Any, locks: dict, results: dict):
+    b_status, b_text = match_state(row, locks, results)
     st.markdown(f"""
-    <div class="match-card">
-      <div class="match-top">
-        <div>
-          <span class="badge b-group">Grupo {row.group}</span>
-          <span class="badge {b_status}">{b_text}</span>
-        </div>
-        <span class="badge b-pending">{row.match_id}</span>
+    <div class="match-top">
+      <div>
+        <span class="badge b-group">Grupo {row.group}</span>
+        <span class="badge {b_status}">{b_text}</span>
       </div>
-      <div class="match-title">
-        <span class="team-name">{row.home}</span>
-        <span class="vs-chip">VS</span>
-        <span class="team-name">{row.away}</span>
-      </div>
-      <div class="match-meta">📅 {fmt_kickoff(row)} · 📍 {row.venue}</div>
+      <span class="badge b-pending">{row.match_id}</span>
+    </div>
+    <div class="match-title">
+      <span class="team-name">{row.home}</span>
+      <span class="vs-chip">VS</span>
+      <span class="team-name">{row.away}</span>
+    </div>
+    <div class="match-meta">📅 {fmt_kickoff(row)} · 📍 {row.venue}</div>
     """, unsafe_allow_html=True)
 
-def close_match_card():
-    st.markdown("</div>", unsafe_allow_html=True)
+# FIX: gráfica Top-10 con colores IMP usando plotly (no st.bar_chart)
+def render_top10_chart(standings: pd.DataFrame):
+    try:
+        import plotly.graph_objects as go  # type: ignore
+        top = standings.head(10)
+        colors = [
+            "#c8962c" if i == 0 else "#9aa4ad" if i == 1 else "#b8743a" if i == 2
+            else "#006341"
+            for i in range(len(top))
+        ]
+        fig = go.Figure(go.Bar(
+            x=top["Usuario"].tolist(),
+            y=top["Puntos"].tolist(),
+            marker_color=colors,
+            text=top["Puntos"].tolist(),
+            textposition="outside",
+        ))
+        fig.update_layout(
+            plot_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="rgba(0,0,0,0)",
+            font=dict(family="IBM Plex Sans", color="#15231d"),
+            margin=dict(t=20, b=10, l=0, r=0),
+            xaxis=dict(title="", tickfont=dict(size=12)),
+            yaxis=dict(title="Puntos", gridcolor="rgba(0,99,65,.1)"),
+            showlegend=False,
+            height=320,
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    except ImportError:
+        # Fallback si plotly no está instalado
+        chart_df = standings.head(10).set_index("Usuario")[["Puntos"]]
+        st.bar_chart(chart_df, use_container_width=True)
+
+# NUEVO: countdown al próximo partido desbloqueado
+def render_countdown():
+    now = datetime.now(APP_TZ)
+    upcoming = []
+    for row in MATCHES.itertuples(index=False):
+        if row.match_id in RESULTS:
+            continue
+        ko = parse_kickoff(getattr(row, "kickoff_at", ""))
+        if ko and ko > now:
+            upcoming.append((ko, row))
+    if not upcoming:
+        return
+    upcoming.sort(key=lambda x: x[0])
+    ko, row = upcoming[0]
+    delta   = ko - now
+    hrs, rem = divmod(int(delta.total_seconds()), 3600)
+    mins     = rem // 60
+    if hrs > 72:
+        txt = f"en {hrs // 24} días"
+    elif hrs > 0:
+        txt = f"en {hrs}h {mins}m"
+    else:
+        txt = f"en {mins} min"
+    st.markdown(f"""
+    <div style="background:linear-gradient(90deg,var(--verde-soft),var(--oro-soft));
+         border:1px solid rgba(200,150,44,.3); border-radius:14px;
+         padding:12px 18px; margin-bottom:14px; display:flex;
+         align-items:center; gap:14px; flex-wrap:wrap;">
+      <span style="font-size:1.5rem">⏱️</span>
+      <div>
+        <div style="font-size:.74rem;font-weight:800;text-transform:uppercase;
+             letter-spacing:.07em;color:var(--gris)">Próximo partido</div>
+        <div style="font-weight:800;color:var(--tinta)">
+          {row.home} vs {row.away} — Grupo {row.group}
+        </div>
+        <div style="font-size:.88rem;color:var(--verde);font-weight:700">
+          {ko.strftime('%d %b · %H:%M CDMX')} · <strong>{txt}</strong>
+        </div>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+# NUEVO: avatar/inicial del usuario para el sidebar
+def render_user_avatar(username: str, pts: int, pos: int | str):
+    initial = username[0].upper() if username else "?"
+    st.markdown(f"""
+    <div style="display:flex;align-items:center;gap:12px;
+         background:linear-gradient(135deg,var(--verde),var(--verde-osc));
+         border-radius:16px; padding:14px 16px; margin-bottom:12px;
+         border-left:4px solid var(--oro); box-shadow:var(--sombra-soft);">
+      <div style="width:44px;height:44px;border-radius:50%;
+           background:var(--oro);display:flex;align-items:center;
+           justify-content:center;font-family:'Bebas Neue';
+           font-size:1.4rem;color:var(--tinta);flex-shrink:0;">{initial}</div>
+      <div>
+        <div style="font-weight:800;color:white;font-size:.95rem;
+             line-height:1.2;">{username}</div>
+        <div style="color:var(--oro);font-size:.82rem;font-weight:700;margin-top:2px;">
+          #{pos} · {pts} pts
+        </div>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+# NUEVO: heat map de cobertura de pronósticos por partido (admin)
+def render_coverage_heatmap(all_preds: dict, n_users: int):
+    if not MATCHES.empty and n_users > 0:
+        coverage = {}
+        for uid_preds in all_preds.values():
+            for mid in uid_preds:
+                coverage[mid] = coverage.get(mid, 0) + 1
+        rows = []
+        for row in MATCHES.itertuples(index=False):
+            cnt = coverage.get(row.match_id, 0)
+            rows.append({
+                "ID":      row.match_id,
+                "Partido": f"{row.home} vs {row.away}",
+                "Grupo":   row.group,
+                "Pronósticos": cnt,
+                "Cobertura %": round((cnt / n_users) * 100),
+            })
+        df_cov = pd.DataFrame(rows).sort_values("Cobertura %")
+        st.dataframe(
+            df_cov,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Cobertura %": st.column_config.ProgressColumn(
+                    "Cobertura %", min_value=0, max_value=100, format="%d%%"
+                ),
+                "Pronósticos": st.column_config.NumberColumn(width="small"),
+                "Grupo":       st.column_config.TextColumn(width="small"),
+                "ID":          st.column_config.TextColumn(width="small"),
+            },
+        )
+        sin_pron = sum(1 for r in rows if r["Pronósticos"] == 0)
+        if sin_pron:
+            st.warning(f"⚠️ {sin_pron} partidos sin ningún pronóstico registrado.")
 
 # ──────────────────────────────────────────────────────────────
 # AUTENTICACIÓN
@@ -895,7 +1032,7 @@ st.markdown("""
     <span class="hero-pill">🎯 Quinela institucional</span>
   </div>
   <h1 class="hero-title">Quinela Mundial 2026</h1>
-  <p class="hero-subtitle">Pronostica, compite y sigue la tabla general.</p>
+  <p class="hero-subtitle">Pronostica, compite y sigue la tabla general con una experiencia más clara, visual y lista para usarse en comunidad.</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -931,9 +1068,8 @@ with st.sidebar:
                     (st.success if ok else st.error)(msg)
     else:
         current_user = st.session_state.current_user
-        st.success(f"✅ {current_user}")
 
-        # ── Métricas personales (FIX: busca por _ukey consistentemente)
+        # Métricas personales — busca por _ukey para evitar bug con acentos
         my_ukey   = user_key(current_user)
         my_preds  = STORE.get_predictions(current_user)
         my_row_df = (
@@ -945,22 +1081,18 @@ with st.sidebar:
         my_eval = int(my_row_df.iloc[0]["Evaluados"]) if not my_row_df.empty else 0
         my_pos  = int(my_row_df.index[0]) + 1         if not my_row_df.empty else "-"
 
+        # Avatar con inicial + posición + puntos
+        render_user_avatar(current_user, my_pts, my_pos)
+
+        # Métrica compacta restante
         st.markdown(f"""
-        <div class="metric-card">
-          <div class="label">Posición global</div>
-          <div class="value">#{my_pos}</div>
-        </div>
-        <div class="metric-card">
-          <div class="label">Mis puntos</div>
-          <div class="value">{my_pts}</div>
-        </div>
         <div class="metric-card">
           <div class="label">Pronosticados / Evaluados</div>
           <div class="value">{len(my_preds)} / {my_eval}</div>
         </div>
         """, unsafe_allow_html=True)
 
-        # ── Barra de progreso ────────────────────────────────
+        # Barra de progreso
         if TOTAL_MATCHES > 0:
             pct = len(my_preds) / TOTAL_MATCHES
             st.progress(pct, text=f"{len(my_preds)} de {TOTAL_MATCHES} partidos pronosticados")
@@ -999,6 +1131,9 @@ with tab_table:
         "Podio, tabla completa y avance general de la quinela."
     )
 
+    # Countdown al próximo partido — visible para todos
+    render_countdown()
+
     if STANDINGS.empty:
         render_empty_state(
             "🏆",
@@ -1011,10 +1146,27 @@ with tab_table:
         medals  = {1: "🥇", 2: "🥈", 3: "🥉"}
         max_pts = int(STANDINGS["Puntos"].max()) or 1
 
+        # Columna de tendencia: compara posición actual vs posición anterior
+        # (guardamos snapshot en session_state para comparar entre recargas)
+        prev_pos: dict = st.session_state.get("_prev_positions", {})
+        cur_pos        = {row["_ukey"]: i for i, row in STANDINGS.reset_index().iterrows()}
+        trend_symbols  = []
+        for ukey in STANDINGS["_ukey"]:
+            prev = prev_pos.get(ukey)
+            cur  = cur_pos.get(ukey, 0)
+            if prev is None or prev == cur:
+                trend_symbols.append("—")
+            elif cur < prev:
+                trend_symbols.append("↑")
+            else:
+                trend_symbols.append("↓")
+        st.session_state["_prev_positions"] = cur_pos
+
         display_df = STANDINGS.drop(columns=["_ukey"], errors="ignore").copy()
         display_df.insert(0, "Pos.", [
             f"{medals.get(i+1, '')} {i+1}" for i in range(len(display_df))
         ])
+        display_df.insert(1, "±", trend_symbols)
         st.dataframe(
             display_df,
             use_container_width=True,
@@ -1023,6 +1175,7 @@ with tab_table:
                 "Puntos":   st.column_config.ProgressColumn("Puntos", max_value=max_pts, format="%d"),
                 "Promedio": st.column_config.NumberColumn(format="%.2f"),
                 "Pos.":     st.column_config.TextColumn(width="small"),
+                "±":        st.column_config.TextColumn("±", width="small"),
             },
         )
         st.download_button(
@@ -1042,10 +1195,10 @@ with tab_table:
     render_kpi(k3, "Pronósticos", sum(len(v) for v in ALL_PREDS.values()), "Registros totales guardados", "📝")
     render_kpi(k4, "Bloqueados", n_bloqueados, "Partidos cerrados a edición", "🔒")
 
+    # FIX: gráfica con colores IMP en lugar de st.bar_chart sin color
     if not STANDINGS.empty and len(RESULTS) > 0:
-        chart_df = STANDINGS.head(10).set_index("Usuario")[["Puntos"]]
         st.markdown("#### Top 10 por puntos")
-        st.bar_chart(chart_df, use_container_width=True)
+        render_top10_chart(STANDINGS)
 
 # ════════════════════════════════════════
 # 2 · MIS PRONÓSTICOS
@@ -1132,26 +1285,8 @@ with tab_preds:
 
                             with col:
                                 with st.container(border=True):
-                                    b_status = ("b-result" if result else "b-locked" if locked else "b-open")
-                                    b_text   = ("Resultado" if result else "Bloqueado" if locked else "Abierto")
-                                    st.markdown(
-                                        f'''
-                                        <div class="match-top">
-                                          <div>
-                                            <span class="badge b-group">Grupo {row.group}</span>
-                                            <span class="badge {b_status}">{b_text}</span>
-                                          </div>
-                                          <span class="badge b-pending">{row.match_id}</span>
-                                        </div>
-                                        <div class="match-title">
-                                          <span class="team-name">{row.home}</span>
-                                          <span class="vs-chip">VS</span>
-                                          <span class="team-name">{row.away}</span>
-                                        </div>
-                                        <div class="match-meta">📅 {fmt_kickoff(row)} · 📍 {row.venue}</div>
-                                        ''',
-                                        unsafe_allow_html=True,
-                                    )
+                                    # Usa el componente centralizado (elimina duplicación)
+                                    render_match_card_header(row, LOCKS, RESULTS)
 
                                     if result:
                                         st.markdown(
@@ -1251,40 +1386,43 @@ with tab_results_tab:
 # 4 · REGLAMENTO  (generado dinámicamente)
 # ════════════════════════════════════════
 with tab_rules_tab:
-    st.subheader("Reglamento de la quinela")
+    render_section_title(
+        "Reglamento de la quinela",
+        "Reglas oficiales, sistema de puntos y criterios de desempate."
+    )
+
+    # Tarjetas de puntos con diseño del sistema
+    r1, r2, r3 = st.columns(3)
+    render_kpi(r1, "Marcador exacto",    POINTS_EXACT,  "Adivinaste el resultado y el marcador", "🎯")
+    render_kpi(r2, "Resultado correcto", POINTS_RESULT, "Adivinaste quién ganó (o empate)", "✅")
+    render_kpi(r3, "Puntos máximos",     TOTAL_MATCHES * POINTS_EXACT, f"{TOTAL_MATCHES} partidos × {POINTS_EXACT} pts", "🏆")
 
     st.markdown(f"""
-**Sistema de puntos**
+---
+#### Desempates *(en orden de prioridad)*
 
-| Criterio | Puntos |
-|---|---:|
-| Marcador exacto (p.ej. 2-1 = 2-1) | {POINTS_EXACT} |
-| Resultado correcto sin marcador exacto (p.ej. pronóstico 2-1, resultado 3-0) | {POINTS_RESULT} |
-| Pronóstico fallido | 0 |
+| Prioridad | Criterio |
+|---:|---|
+| 1 | Mayor número de **puntos totales** |
+| 2 | Mayor número de marcadores **exactos** (+{POINTS_EXACT} pts) |
+| 3 | Mayor número de **resultados acertados** (+{POINTS_RESULT} pt) |
+| 4 | Menor suma de diferencias absolutas de goles |
+| 5 | Mayor cantidad de partidos pronosticados |
 
-**Desempates** (en orden de prioridad):
+---
+#### Bloqueo de pronósticos
 
-1. Mayor número de puntos totales
-2. Mayor número de marcadores exactos ({POINTS_EXACT} pts)
-3. Mayor número de resultados acertados ({POINTS_RESULT} pt)
-4. Menor suma de diferencias absolutas de marcador
-5. Mayor número de partidos pronosticados
+Cada partido se bloquea **automáticamente** al llegar su hora de inicio.
+Si la hora no está definida, el administrador puede bloquear manualmente desde el panel.
+Una vez bloqueado, el pronóstico **ya no puede modificarse**.
 
-**Bloqueo de pronósticos**
+#### Edición libre hasta el cierre
 
-Cada partido se bloquea automáticamente al llegar su hora de inicio (`kickoff_at`).
-Si la hora no está definida o hay un cambio operativo, el administrador puede activar el bloqueo manualmente.
-Una vez bloqueado, el pronóstico ya no puede modificarse.
+Puedes cambiar tu pronóstico **cuantas veces quieras** mientras el partido esté abierto.
+Siempre se guarda el último valor confirmado.
 
-**Edición**
-
-Puedes cambiar tu pronóstico cuantas veces quieras mientras el partido siga abierto.
-Se guarda siempre el último valor confirmado.
-
-**Participantes**
-
-- Total de partidos: **{TOTAL_MATCHES}**
-- Puntos máximos posibles: **{TOTAL_MATCHES * POINTS_EXACT}**
+---
+*{TOTAL_MATCHES} partidos · Fase de grupos · {len(GROUPS)} grupos de 4 equipos*
     """)
 
     if CALENDAR_WARNINGS:
@@ -1314,8 +1452,8 @@ with tab_admin_tab:
     if st.session_state.is_admin:
         st.success("✅ Modo administrador activo")
 
-        adm_res_tab, adm_lock_tab, adm_users_tab, adm_audit_tab, adm_export_tab = st.tabs([
-            "Resultados", "Bloqueos manuales", "Participantes", "Auditoría", "Respaldo"
+        adm_res_tab, adm_lock_tab, adm_users_tab, adm_coverage_tab, adm_audit_tab, adm_export_tab = st.tabs([
+            "Resultados", "Bloqueos manuales", "Participantes", "Cobertura", "Auditoría", "Respaldo"
         ])
 
         # ── Resultados ────────────────────────────────────────
@@ -1486,6 +1624,19 @@ with tab_admin_tab:
                         st.success(f"Contraseña de **{reset_u}** actualizada.")
             else:
                 st.caption("Sin participantes registrados.")
+
+        # ── Cobertura (heat map) ──────────────────────────────
+        with adm_coverage_tab:
+            st.markdown("#### Cobertura de pronósticos por partido")
+            st.caption(
+                "Muestra cuántos participantes pronosticaron cada partido. "
+                "Los partidos con cobertura baja pueden necesitar un recordatorio."
+            )
+            n_users = len(USERS)
+            if n_users == 0:
+                render_empty_state("📊", "Sin participantes aún", "Cuando haya usuarios registrados, aquí aparecerá la cobertura por partido.")
+            else:
+                render_coverage_heatmap(ALL_PREDS, n_users)
 
         # ── Auditoría ─────────────────────────────────────────
         with adm_audit_tab:

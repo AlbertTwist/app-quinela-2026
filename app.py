@@ -1,15 +1,13 @@
 """
 Quinela Mundial 2026 · Posgrado IMP
 =====================================
-v5 — Correcciones sobre v4:
-  - Cache de datos vivos con TTL corto (evita lecturas repetidas por recarga)
-  - Bug fix: búsqueda de posición en sidebar usa user_key consistentemente
-  - Tab Resultados muestra todos los partidos (con y sin resultado)
-  - Barra de progreso de pronósticos por usuario
-  - Admin: reset de contraseña de participantes
-  - get_store() sin cache_resource para no atrapar errores de Supabase
-  - Reglamento generado dinámicamente desde constantes, sin texto hardcodeado
-  - Separación clara store/UI: todas las lecturas pasan por get_live_data()
+v6 — Diseño y experiencia sobre v5:
+  - Rediseño visual premium con identidad IMP, hero, KPIs, podio y tarjetas
+  - Tarjetas de partido más claras con estado, resultado oficial y pronóstico personal
+  - Progreso por grupos para cada usuario
+  - Estados vacíos más explicativos
+  - Bloque de actividad rápida para orientar al participante
+  - Mantiene las mejoras técnicas de v5: Supabase, auditoría, bloqueos, exports y seguridad
 """
 
 from __future__ import annotations
@@ -93,34 +91,130 @@ USERNAME_RE         = re.compile(r"^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9_. -]{
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
-:root { --verde:#006341; --verde-osc:#004d32; --oro:#c8962c; }
-html,body,[class*="css"] { font-family:'IBM Plex Sans',sans-serif; }
-h1,h2,h3 { font-family:'Bebas Neue',sans-serif; letter-spacing:1px; }
-.header-banner {
-  background:linear-gradient(135deg,#006341 0%,#004d32 52%,#1a1a1a 100%);
-  color:white; padding:22px 30px; border-radius:14px; margin-bottom:22px;
-  border-bottom:4px solid var(--oro); box-shadow:0 8px 24px rgba(0,0,0,.12);
+
+:root {
+  --verde:#006341;
+  --verde-osc:#004d32;
+  --verde-soft:#e9f5ef;
+  --oro:#c8962c;
+  --oro-soft:#fff4d6;
+  --crema:#f7f3ea;
+  --tinta:#15231d;
+  --gris:#66736d;
+  --linea:rgba(0,99,65,.14);
+  --sombra:0 14px 36px rgba(21,35,29,.10);
+  --sombra-soft:0 8px 20px rgba(21,35,29,.08);
 }
-.header-banner h1 { color:white; margin:0; font-size:2.6rem; line-height:1; }
-.header-banner p  { margin:6px 0 0; opacity:.88; font-size:.95rem; }
+
+html, body, [class*="css"] { font-family:'IBM Plex Sans',sans-serif; }
+h1, h2, h3 { font-family:'Bebas Neue',sans-serif; letter-spacing:1px; }
+
+.stApp {
+  background:
+    radial-gradient(circle at top left, rgba(200,150,44,.14), transparent 32rem),
+    linear-gradient(180deg, #fbfaf6 0%, #f6f1e8 48%, #ffffff 100%);
+}
+.block-container { padding-top:1.4rem; padding-bottom:3rem; max-width:1240px; }
+section[data-testid="stSidebar"] { background:linear-gradient(180deg,#ffffff 0%,#f7f3ea 100%); }
+section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p { color:var(--tinta); }
+
+.hero-banner {
+  position:relative; overflow:hidden;
+  background:
+    radial-gradient(circle at 88% 15%, rgba(200,150,44,.42), transparent 16rem),
+    linear-gradient(135deg,#006341 0%,#004d32 46%,#141c18 100%);
+  color:white; padding:28px 32px; border-radius:24px; margin-bottom:22px;
+  border:1px solid rgba(255,255,255,.16); box-shadow:var(--sombra);
+}
+.hero-banner::after {
+  content:""; position:absolute; inset:auto -60px -90px auto; width:240px; height:240px;
+  border-radius:50%; border:28px solid rgba(255,255,255,.08);
+}
+.hero-kicker { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:12px; }
+.hero-pill {
+  display:inline-flex; align-items:center; gap:6px; padding:6px 11px; border-radius:999px;
+  background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.20);
+  color:white; font-size:.74rem; font-weight:700; letter-spacing:.05em; text-transform:uppercase;
+}
+.hero-title { font-family:'Bebas Neue'; font-size:3.25rem; line-height:.95; margin:0; color:white; }
+.hero-subtitle { margin:10px 0 0; opacity:.90; max-width:760px; font-size:1.02rem; }
+
+.section-title { margin:4px 0 14px; }
+.section-title h2, .section-title h3 { margin-bottom:2px; }
+.section-title p { margin:0; color:var(--gris); }
+
+.kpi-card, .podium-card, .empty-card, .quick-card {
+  background:rgba(255,255,255,.88); border:1px solid var(--linea); border-radius:20px;
+  padding:16px 18px; box-shadow:var(--sombra-soft); height:100%;
+}
+.kpi-card { border-top:4px solid var(--verde); }
+.kpi-card .kpi-top { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.kpi-card .kpi-icon { font-size:1.4rem; }
+.kpi-card .kpi-label { color:var(--gris); font-size:.76rem; font-weight:800; letter-spacing:.06em; text-transform:uppercase; }
+.kpi-card .kpi-value { font-family:'Bebas Neue'; color:var(--tinta); font-size:2.2rem; line-height:1; margin-top:4px; }
+.kpi-card .kpi-hint { color:var(--gris); font-size:.82rem; margin-top:7px; }
+
 .metric-card {
   background:linear-gradient(135deg,var(--verde),var(--verde-osc));
-  color:white; padding:14px 18px; border-radius:12px;
-  border-left:4px solid var(--oro); margin-bottom:10px;
+  color:white; padding:14px 18px; border-radius:16px;
+  border-left:4px solid var(--oro); margin-bottom:10px; box-shadow:var(--sombra-soft);
 }
 .metric-card .label { font-size:.72rem; opacity:.82; text-transform:uppercase; letter-spacing:1px; }
 .metric-card .value { font-family:'Bebas Neue'; font-size:1.9rem; color:var(--oro); line-height:1.1; }
-.badge { display:inline-block; color:white; font-size:.7rem; font-weight:700;
-  padding:2px 9px; border-radius:20px; text-transform:uppercase;
-  letter-spacing:.8px; white-space:nowrap; margin-right:4px; }
+
+.badge { display:inline-flex; align-items:center; color:white; font-size:.68rem; font-weight:800;
+  padding:3px 9px; border-radius:999px; text-transform:uppercase;
+  letter-spacing:.07em; white-space:nowrap; margin-right:5px; }
 .b-group  { background:var(--verde); }
 .b-open   { background:#2e7d32; }
 .b-locked { background:#b71c1c; }
 .b-result { background:#5d4037; }
-.stTabs [data-baseweb="tab-list"] { gap:3px; background:#e8f5e9; border-radius:10px; padding:5px; }
-.stTabs [data-baseweb="tab"]      { font-weight:700; border-radius:8px; }
-.stTabs [aria-selected="true"]    { background:var(--verde)!important; color:white!important; }
-details summary { font-weight:700; color:var(--verde); }
+.b-pending { background:#69756f; }
+
+.podium-card { text-align:center; position:relative; overflow:hidden; }
+.podium-card.place-1 { border-top:5px solid var(--oro); background:linear-gradient(180deg,#fff9e8 0%,#ffffff 70%); }
+.podium-card.place-2 { border-top:5px solid #9aa4ad; }
+.podium-card.place-3 { border-top:5px solid #b8743a; }
+.podium-rank { font-size:2rem; line-height:1; }
+.podium-user { font-weight:800; color:var(--tinta); margin-top:6px; min-height:28px; }
+.podium-points { font-family:'Bebas Neue'; font-size:2.3rem; color:var(--verde); line-height:1; margin-top:6px; }
+.podium-meta { color:var(--gris); font-size:.82rem; margin-top:4px; }
+
+.match-card {
+  background:rgba(255,255,255,.96); border:1px solid rgba(0,99,65,.15); border-radius:18px;
+  padding:15px 16px; box-shadow:0 8px 22px rgba(21,35,29,.07); height:100%;
+}
+.match-card:hover { border-color:rgba(200,150,44,.65); box-shadow:0 12px 28px rgba(21,35,29,.12); }
+.match-card .match-top { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px; flex-wrap:wrap; }
+.match-card .match-title { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:8px 0 4px; }
+.team-name { font-weight:800; color:var(--tinta); font-size:1.02rem; }
+.vs-chip { color:var(--gris); font-size:.75rem; font-weight:800; background:var(--verde-soft); padding:4px 7px; border-radius:999px; }
+.match-meta { color:var(--gris); font-size:.82rem; margin-bottom:10px; }
+.score-line { background:var(--verde-soft); border:1px solid rgba(0,99,65,.12); border-radius:14px; padding:9px 11px; margin:8px 0; }
+.score-line.official { background:var(--oro-soft); border-color:rgba(200,150,44,.28); }
+.score-title { color:var(--gris); font-size:.72rem; font-weight:800; letter-spacing:.06em; text-transform:uppercase; }
+.score-value { font-weight:800; color:var(--tinta); }
+
+.empty-card { text-align:center; padding:30px 22px; }
+.empty-card .empty-icon { font-size:2.4rem; }
+.empty-card .empty-title { font-weight:900; font-size:1.1rem; color:var(--tinta); margin-top:8px; }
+.empty-card .empty-text { color:var(--gris); max-width:620px; margin:6px auto 0; }
+
+.quick-card { margin:10px 0 16px; }
+.quick-card strong { color:var(--verde); }
+
+.stTabs [data-baseweb="tab-list"] { gap:4px; background:rgba(0,99,65,.08); border-radius:14px; padding:6px; }
+.stTabs [data-baseweb="tab"] { font-weight:800; border-radius:10px; padding:8px 13px; }
+.stTabs [aria-selected="true"] { background:var(--verde)!important; color:white!important; }
+details summary { font-weight:800; color:var(--verde); }
+button[kind="primary"] { border-radius:999px!important; }
+
+@media (max-width: 760px) {
+  .block-container { padding-left:1rem; padding-right:1rem; }
+  .hero-banner { padding:22px 20px; border-radius:20px; }
+  .hero-title { font-size:2.35rem; }
+  .match-card .match-title { align-items:flex-start; flex-direction:column; gap:4px; }
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -647,6 +741,114 @@ def build_predictions_export(users, all_preds, results) -> pd.DataFrame:
             })
     return pd.DataFrame(rows)
 
+
+# ──────────────────────────────────────────────────────────────
+# COMPONENTES VISUALES v6
+# ──────────────────────────────────────────────────────────────
+def pct_txt(num: int, den: int) -> str:
+    if den <= 0:
+        return "0%"
+    return f"{round((num / den) * 100):.0f}%"
+
+def render_kpi(container, label: str, value: str | int, hint: str = "", icon: str = ""):
+    with container:
+        st.markdown(f"""
+        <div class="kpi-card">
+          <div class="kpi-top">
+            <div>
+              <div class="kpi-label">{label}</div>
+              <div class="kpi-value">{value}</div>
+            </div>
+            <div class="kpi-icon">{icon}</div>
+          </div>
+          <div class="kpi-hint">{hint}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+def render_empty_state(icon: str, title: str, text: str):
+    st.markdown(f"""
+    <div class="empty-card">
+      <div class="empty-icon">{icon}</div>
+      <div class="empty-title">{title}</div>
+      <div class="empty-text">{text}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+def render_section_title(title: str, subtitle: str = ""):
+    st.markdown(f"""
+    <div class="section-title">
+      <h2>{title}</h2>
+      <p>{subtitle}</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+def render_podium(standings: pd.DataFrame):
+    if standings.empty:
+        return
+    cols = st.columns(3)
+    medals = ["🥇", "🥈", "🥉"]
+    for i in range(3):
+        with cols[i]:
+            if i < len(standings):
+                r = standings.iloc[i]
+                st.markdown(f"""
+                <div class="podium-card place-{i+1}">
+                  <div class="podium-rank">{medals[i]}</div>
+                  <div class="podium-user">{r['Usuario']}</div>
+                  <div class="podium-points">{int(r['Puntos'])}</div>
+                  <div class="podium-meta">{int(r['Exactos 🎯'])} exactos · {int(r['Acertados ✅'])} aciertos</div>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown(f"""
+                <div class="podium-card place-{i+1}">
+                  <div class="podium-rank">{medals[i]}</div>
+                  <div class="podium-user">Lugar disponible</div>
+                  <div class="podium-points">—</div>
+                  <div class="podium-meta">Esperando participantes</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+def group_progress_df(my_preds: dict) -> pd.DataFrame:
+    rows = []
+    for g in GROUPS:
+        ids = [r.match_id for r in MATCHES.itertuples(index=False) if r.group == g]
+        done = sum(1 for mid in ids if mid in my_preds)
+        total = len(ids)
+        rows.append({"Grupo": g, "Pronosticados": done, "Total": total, "Avance": round((done / total) * 100) if total else 0})
+    return pd.DataFrame(rows)
+
+def match_state(row: Any, locks: dict, results: dict) -> tuple[str, str]:
+    result = results.get(row.match_id)
+    locked = is_locked(row, locks, results)
+    if result:
+        return "b-result", "Resultado"
+    if locked:
+        return "b-locked", "Bloqueado"
+    return "b-open", "Abierto"
+
+def render_match_header(row: Any, locked: bool, result: dict | None):
+    b_status, b_text = match_state(row, LOCKS, RESULTS)
+    st.markdown(f"""
+    <div class="match-card">
+      <div class="match-top">
+        <div>
+          <span class="badge b-group">Grupo {row.group}</span>
+          <span class="badge {b_status}">{b_text}</span>
+        </div>
+        <span class="badge b-pending">{row.match_id}</span>
+      </div>
+      <div class="match-title">
+        <span class="team-name">{row.home}</span>
+        <span class="vs-chip">VS</span>
+        <span class="team-name">{row.away}</span>
+      </div>
+      <div class="match-meta">📅 {fmt_kickoff(row)} · 📍 {row.venue}</div>
+    """, unsafe_allow_html=True)
+
+def close_match_card():
+    st.markdown("</div>", unsafe_allow_html=True)
+
 # ──────────────────────────────────────────────────────────────
 # AUTENTICACIÓN
 # ──────────────────────────────────────────────────────────────
@@ -686,9 +888,14 @@ for _k, _d in {"logged_in": False, "current_user": "", "is_admin": False}.items(
 # HEADER
 # ──────────────────────────────────────────────────────────────
 st.markdown("""
-<div class="header-banner">
-  <h1>⚽ Quinela Mundial 2026</h1>
-  <p>Plataforma oficial de pronósticos · Posgrado Instituto Mexicano del Petróleo</p>
+<div class="hero-banner">
+  <div class="hero-kicker">
+    <span class="hero-pill">⚽ Mundial FIFA 2026</span>
+    <span class="hero-pill">🏛️ Posgrado IMP</span>
+    <span class="hero-pill">🎯 Quinela institucional</span>
+  </div>
+  <h1 class="hero-title">Quinela Mundial 2026</h1>
+  <p class="hero-subtitle">Pronostica, compite y sigue la tabla general con una experiencia más clara, visual y lista para usarse en comunidad.</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -787,11 +994,20 @@ tab_table, tab_preds, tab_results_tab, tab_rules_tab, tab_admin_tab = st.tabs([
 # 1 · TABLA GENERAL
 # ════════════════════════════════════════
 with tab_table:
-    st.subheader("Clasificación global")
+    render_section_title(
+        "Clasificación global",
+        "Podio, tabla completa y avance general de la quinela."
+    )
 
     if STANDINGS.empty:
-        st.info("La tabla se activará cuando haya participantes y pronósticos registrados.")
+        render_empty_state(
+            "🏆",
+            "La competencia aún no arranca",
+            "Cuando existan participantes y pronósticos, aquí aparecerá el podio y la clasificación completa."
+        )
     else:
+        render_podium(STANDINGS)
+        st.write("")
         medals  = {1: "🥇", 2: "🥈", 3: "🥉"}
         max_pts = int(STANDINGS["Puntos"].max()) or 1
 
@@ -816,21 +1032,29 @@ with tab_table:
             mime="text/csv",
         )
 
-    c1, c2, c3, c4 = st.columns(4)
     n_bloqueados = (
         sum(1 for r in MATCHES.itertuples(index=False) if is_locked(r, LOCKS, RESULTS))
         if not MATCHES.empty else 0
     )
-    c1.metric("Resultados cargados",  f"{len(RESULTS)} / {TOTAL_MATCHES}")
-    c2.metric("Participantes",         len(USERS))
-    c3.metric("Pronósticos totales",   sum(len(v) for v in ALL_PREDS.values()))
-    c4.metric("Partidos bloqueados",   n_bloqueados)
+    k1, k2, k3, k4 = st.columns(4)
+    render_kpi(k1, "Resultados", f"{len(RESULTS)} / {TOTAL_MATCHES}", "Marcadores oficiales cargados", "📊")
+    render_kpi(k2, "Participantes", len(USERS), "Usuarios registrados", "👥")
+    render_kpi(k3, "Pronósticos", sum(len(v) for v in ALL_PREDS.values()), "Registros totales guardados", "📝")
+    render_kpi(k4, "Bloqueados", n_bloqueados, "Partidos cerrados a edición", "🔒")
+
+    if not STANDINGS.empty and len(RESULTS) > 0:
+        chart_df = STANDINGS.head(10).set_index("Usuario")[["Puntos"]]
+        st.markdown("#### Top 10 por puntos")
+        st.bar_chart(chart_df, use_container_width=True)
 
 # ════════════════════════════════════════
 # 2 · MIS PRONÓSTICOS
 # ════════════════════════════════════════
 with tab_preds:
-    st.subheader("Mis pronósticos")
+    render_section_title(
+        "Mis pronósticos",
+        "Completa tus marcadores antes de que cada partido se bloquee."
+    )
 
     if not st.session_state.logged_in:
         st.warning("⚠️ Inicia sesión para registrar o modificar tus pronósticos.")
@@ -839,6 +1063,25 @@ with tab_preds:
     else:
         current_user = st.session_state.current_user
         my_preds     = STORE.get_predictions(current_user)
+        pending_count = max(0, TOTAL_MATCHES - len(my_preds))
+        st.markdown(f"""
+        <div class="quick-card">
+          <strong>Tu avance:</strong> {len(my_preds)} de {TOTAL_MATCHES} partidos pronosticados ·
+          <strong>{pending_count}</strong> pendientes. Usa los filtros para ir grupo por grupo.
+        </div>
+        """, unsafe_allow_html=True)
+
+        with st.expander("📈 Ver avance por grupos", expanded=False):
+            gp = group_progress_df(my_preds)
+            st.dataframe(
+                gp,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Avance": st.column_config.ProgressColumn("Avance", min_value=0, max_value=100, format="%d%%"),
+                    "Grupo": st.column_config.TextColumn(width="small"),
+                },
+            )
 
         fc1, fc2, fc3 = st.columns([1, 2, 2])
         g_filter = fc1.selectbox("Grupo", ["Todos"] + GROUPS, key="f_group")
@@ -862,7 +1105,7 @@ with tab_preds:
         filtered = [r for r in MATCHES.itertuples(index=False) if match_visible(r)]
 
         if not filtered:
-            st.info("Sin partidos que coincidan con los filtros.")
+            render_empty_state("🔎", "Sin coincidencias", "Ajusta el grupo, el estado o la búsqueda de equipo para encontrar partidos.")
         else:
             by_date: dict[str, list] = {}
             for row in filtered:
@@ -892,26 +1135,48 @@ with tab_preds:
                                     b_status = ("b-result" if result else "b-locked" if locked else "b-open")
                                     b_text   = ("Resultado" if result else "Bloqueado" if locked else "Abierto")
                                     st.markdown(
-                                        f'<span class="badge b-group">Grupo {row.group}</span>'
-                                        f'<span class="badge {b_status}">{b_text}</span>',
+                                        f'''
+                                        <div class="match-top">
+                                          <div>
+                                            <span class="badge b-group">Grupo {row.group}</span>
+                                            <span class="badge {b_status}">{b_text}</span>
+                                          </div>
+                                          <span class="badge b-pending">{row.match_id}</span>
+                                        </div>
+                                        <div class="match-title">
+                                          <span class="team-name">{row.home}</span>
+                                          <span class="vs-chip">VS</span>
+                                          <span class="team-name">{row.away}</span>
+                                        </div>
+                                        <div class="match-meta">📅 {fmt_kickoff(row)} · 📍 {row.venue}</div>
+                                        ''',
                                         unsafe_allow_html=True,
                                     )
-                                    st.markdown(f"**{row.home}** vs **{row.away}**")
-                                    st.caption(f"📅 {fmt_kickoff(row)}  ·  📍 {row.venue}")
 
                                     if result:
-                                        st.success(
-                                            f"Resultado oficial: **{result['home_goals']} – {result['away_goals']}**"
+                                        st.markdown(
+                                            f'''<div class="score-line official">
+                                                <div class="score-title">Resultado oficial</div>
+                                                <div class="score-value">{result['home_goals']} – {result['away_goals']}</div>
+                                            </div>''',
+                                            unsafe_allow_html=True,
                                         )
                                     if pred:
-                                        line = f"Tu pronóstico: **{pred['home_goals']} – {pred['away_goals']}**"
+                                        line = f"{pred['home_goals']} – {pred['away_goals']}"
+                                        extra = ""
                                         if result:
                                             pts = calc_pts(
                                                 int(pred["home_goals"]), int(pred["away_goals"]),
                                                 int(result["home_goals"]), int(result["away_goals"]),
                                             )
-                                            line += f"  ·  {pts_label(pts)}"
-                                        st.info(line)
+                                            extra = f" · {pts_label(pts)}"
+                                        st.markdown(
+                                            f'''<div class="score-line">
+                                                <div class="score-title">Tu pronóstico</div>
+                                                <div class="score-value">{line}{extra}</div>
+                                            </div>''',
+                                            unsafe_allow_html=True,
+                                        )
 
                                     if locked:
                                         if not pred:
@@ -938,7 +1203,15 @@ with tab_preds:
 # 3 · RESULTADOS  (FIX: muestra todos los partidos, con y sin resultado)
 # ════════════════════════════════════════
 with tab_results_tab:
-    st.subheader("Resultados oficiales")
+    render_section_title(
+        "Resultados oficiales",
+        "Consulta marcadores cargados, sedes y avance del calendario."
+    )
+
+    rr1, rr2, rr3 = st.columns(3)
+    render_kpi(rr1, "Con resultado", f"{len(RESULTS)} / {TOTAL_MATCHES}", f"{pct_txt(len(RESULTS), TOTAL_MATCHES)} del calendario", "✅")
+    render_kpi(rr2, "Pendientes", max(0, TOTAL_MATCHES - len(RESULTS)), "Partidos sin marcador oficial", "⏳")
+    render_kpi(rr3, "Grupos", len(GROUPS), "Fase de grupos cargada", "🌎")
 
     rc1, rc2 = st.columns([1, 3])
     rg       = rc1.selectbox("Filtrar por grupo", ["Todos"] + GROUPS, key="res_group")
@@ -972,7 +1245,7 @@ with tab_results_tab:
         )
         st.caption(f"Mostrando {len(rows_res)} partidos · {len(RESULTS)} con resultado cargado.")
     else:
-        st.info("Aún no hay resultados para este filtro.")
+        render_empty_state("📊", "Sin resultados para este filtro", "Activa la casilla para ver partidos sin resultado o selecciona otro grupo.")
 
 # ════════════════════════════════════════
 # 4 · REGLAMENTO  (generado dinámicamente)

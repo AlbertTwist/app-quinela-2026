@@ -1,6 +1,6 @@
-# Quinela Mundial 2026 · Posgrado IMP — v4
+# Quinela Mundial 2026 · Posgrado IMP — v6 diseño
 
-Versión reforzada para GitHub + Streamlit Cloud + Supabase.
+Versión reforzada para GitHub + Streamlit Cloud + Supabase, con rediseño visual orientado a uso institucional.
 
 ## Archivos principales
 
@@ -50,16 +50,29 @@ También funciona `ADMIN_PASSWORD = "..."`, pero `ADMIN_PASSWORD_HASH` es prefer
 
 `requirements.txt` ya incluye `supabase>=2.6`, por lo que Streamlit Cloud instalará el backend sin tener que renombrar archivos.
 
-## Mejoras v4
+## Mejoras v6
 
-- Supabase incluido por defecto para evitar que la app caiga silenciosamente a JSON local en producción.
-- Puntos configurables desde Secrets: `POINTS_EXACT` y `POINTS_RESULT`.
-- Registro abierto/cerrado desde `ENABLE_REGISTRATION`.
-- Nueva pestaña **Reglamento** para participantes.
-- Panel admin ampliado: participantes, exportación CSV de pronósticos y auditoría.
-- Tabla `quinela_audit_log` para registrar altas de usuario, resultados, eliminaciones y bloqueos manuales.
+- Rediseño visual completo: hero institucional, gradientes IMP, tarjetas KPI, podio y mejores estados vacíos.
+- Tarjetas de partido más claras: ID, grupo, estado, sede, kickoff, resultado oficial y pronóstico personal.
+- Progreso de pronósticos por usuario y por grupo.
+- Vista de resultados con KPIs de avance y filtros más claros.
+- Gráfica Top 10 por puntos cuando ya existan resultados.
+- Se mantienen las mejoras técnicas previas: Supabase incluido, puntos configurables, auditoría, exports CSV/JSON, bloqueo automático/manual y reset de contraseñas.
 - Validación básica de calendario: IDs duplicados, kickoff faltante o formato inválido.
 - Descargas CSV con `utf-8-sig` para abrir correctamente en Excel.
+
+## Actualización desde v5
+
+Si ya tienes v5 funcionando, normalmente basta reemplazar estos archivos:
+
+```text
+app.py
+README_DEPLOY.md
+requirements.txt
+.streamlit/config.toml
+```
+
+No necesitas ejecutar una migración nueva si ya aplicaste la migración v3→v4 y tus tablas incluyen auditoría.
 
 ## Ejecución local
 

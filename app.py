@@ -112,29 +112,6 @@ st.markdown("""
 }
 
 /* ── Dark-mode tokens ──────────────────────────────────── */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --verde-soft: rgba(0,99,65,.22);
-    --oro-soft:   rgba(200,150,44,.18);
-    --crema:      #1c2420;
-    --tinta:      #e8f0ec;
-    --gris:       #93a39b;
-    --linea:      rgba(0,99,65,.28);
-    --sombra:     0 14px 36px rgba(0,0,0,.32);
-    --sombra-soft:0 8px 20px rgba(0,0,0,.22);
-  }
-  .kpi-card, .podium-card, .empty-card, .quick-card,
-  .match-card, .bracket-card, .award-card, .special-card,
-  .stage-mini {
-    background: rgba(30,42,36,.88) !important;
-  }
-  .stApp {
-    background:
-      radial-gradient(circle at top left, rgba(200,150,44,.08), transparent 32rem),
-      linear-gradient(180deg, #131a17 0%, #0f1a15 100%) !important;
-  }
-}
-
 /* ── Keyframe animations ───────────────────────────────── */
 @keyframes fadeUp {
   from { opacity:0; transform:translateY(14px); }

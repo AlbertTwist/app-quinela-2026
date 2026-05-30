@@ -1,11 +1,11 @@
 """
 Quinela Mundial 2026 · Posgrado IMP
 =====================================
-v8 — Dos etapas + diseño plus:
-  - Fase de grupos + eliminatorias completas (M073–M104: 16avos, octavos, cuartos, semifinales, tercer lugar y final)
-  - Filtros por etapa y ronda, tablero visual de bracket y ranking global
-  - Mantiene Supabase, auditoría, bloqueos, exports, seguridad y diseño institucional
-  - Las eliminatorias se cargan con placeholders oficiales; cuando se definan equipos, basta actualizar matches_2026.csv
+v9 — Tablas por etapa + premios especiales:
+  - Rankings separados para fase de grupos y eliminatorias
+  - Distinciones automáticas de fase de grupos: más exactos, más aciertos, mejor efectividad, mejor diferencia y participación
+  - Pronósticos especiales de eliminatorias/torneo: campeón, Balón de Oro, Bota de Oro, Guante de Oro, Fair Play, caballo negro, etc.
+  - Mantiene Supabase, auditoría, bloqueos, exports, seguridad, diseño institucional y calendario de 104 partidos
 """
 
 from __future__ import annotations
@@ -80,6 +80,7 @@ SUPABASE_URL        = get_secret("SUPABASE_URL", "")
 SUPABASE_KEY        = get_secret("SUPABASE_SERVICE_ROLE_KEY", "") or get_secret("SUPABASE_KEY", "")
 POINTS_EXACT        = max(1, get_int_secret("POINTS_EXACT", 3))
 POINTS_RESULT       = max(0, get_int_secret("POINTS_RESULT", 1))
+POINTS_SPECIAL      = max(0, get_int_secret("POINTS_SPECIAL", 5))
 ENABLE_REGISTRATION = get_bool_secret("ENABLE_REGISTRATION", True)
 USERNAME_RE         = re.compile(r"^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9_. -]{3,40}$")
 
@@ -215,6 +216,25 @@ section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p { color:v
 details summary { font-weight:800; color:var(--verde); }
 button[kind="primary"] { border-radius:999px!important; }
 
+
+.award-card {
+  background:linear-gradient(180deg,#ffffff 0%,#fbfaf6 100%);
+  border:1px solid rgba(0,99,65,.14); border-radius:20px; padding:16px 18px;
+  box-shadow:var(--sombra-soft); height:100%; position:relative; overflow:hidden;
+}
+.award-card::after { content:""; position:absolute; right:-28px; bottom:-34px; width:100px; height:100px; border-radius:50%; background:rgba(200,150,44,.12); }
+.award-card .award-icon { font-size:1.8rem; line-height:1; }
+.award-card .award-label { color:var(--gris); font-size:.72rem; font-weight:900; letter-spacing:.07em; text-transform:uppercase; margin-top:8px; }
+.award-card .award-winner { color:var(--tinta); font-weight:900; font-size:1.05rem; margin-top:4px; min-height:28px; }
+.award-card .award-meta { color:var(--verde); font-weight:800; font-size:.84rem; margin-top:3px; }
+.special-card {
+  background:rgba(255,255,255,.96); border:1px solid rgba(200,150,44,.26); border-radius:18px;
+  padding:14px 16px; box-shadow:0 8px 22px rgba(21,35,29,.07); height:100%;
+}
+.special-card .special-label { color:var(--oro); font-weight:900; font-size:.76rem; letter-spacing:.07em; text-transform:uppercase; }
+.special-card .special-help { color:var(--gris); font-size:.82rem; margin:3px 0 8px; }
+.special-card .special-result { background:var(--oro-soft); border:1px solid rgba(200,150,44,.25); border-radius:12px; padding:8px 10px; margin-top:8px; font-size:.88rem; }
+
 @media (max-width: 760px) {
   .block-container { padding-left:1rem; padding-right:1rem; }
   .hero-banner { padding:22px 20px; border-radius:20px; }
@@ -273,14 +293,20 @@ class LocalStore:
         self.path = path
         self.path.parent.mkdir(parents=True, exist_ok=True)
         if not self.path.exists():
-            self._save({"users": {}, "predictions": {}, "results": {}, "locks": {}, "audit_log": []})
+            self._save({
+                "users": {}, "predictions": {}, "results": {}, "locks": {},
+                "special_predictions": {}, "special_results": {}, "audit_log": []
+            })
         self._migrate()
 
     def _load(self) -> dict[str, Any]:
         try:
             return json.loads(self.path.read_text(encoding="utf-8"))
         except Exception:
-            return {"users": {}, "predictions": {}, "results": {}, "locks": {}, "audit_log": []}
+            return {
+                "users": {}, "predictions": {}, "results": {}, "locks": {},
+                "special_predictions": {}, "special_results": {}, "audit_log": []
+            }
 
     def _save(self, data: dict[str, Any]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -321,7 +347,7 @@ class LocalStore:
         if "resultados" in data:
             data["results"] = {mid: to_score(s) for mid, s in data.pop("resultados", {}).items()}
             changed = True
-        for k in ("users", "predictions", "results", "locks"):
+        for k in ("users", "predictions", "results", "locks", "special_predictions", "special_results"):
             data.setdefault(k, {})
         data.setdefault("audit_log", [])
         if changed:
@@ -407,6 +433,41 @@ class LocalStore:
             return True, "ok"
         except Exception as exc:
             return False, str(exc)
+
+    # ── Pronósticos especiales / premios ─────────────────────
+    def get_special_predictions(self, username: str) -> dict:
+        return self._load().get("special_predictions", {}).get(user_key(username), {})
+
+    def list_all_special_predictions(self) -> dict:
+        return self._load().get("special_predictions", {})
+
+    def upsert_special_prediction(self, username: str, category: str, value: str) -> None:
+        data = self._load()
+        k    = user_key(username)
+        data.setdefault("special_predictions", {}).setdefault(k, {})[category] = {
+            "category": category,
+            "value": str(value).strip(),
+            "updated_at": datetime.now(APP_TZ).isoformat(timespec="seconds"),
+        }
+        self._save(data)
+
+    def list_special_results(self) -> dict:
+        return self._load().get("special_results", {})
+
+    def upsert_special_result(self, category: str, value: str, points: int) -> None:
+        data = self._load()
+        data.setdefault("special_results", {})[category] = {
+            "category": category,
+            "value": str(value).strip(),
+            "points": int(points),
+            "updated_at": datetime.now(APP_TZ).isoformat(timespec="seconds"),
+        }
+        self._save(data)
+
+    def delete_special_result(self, category: str) -> None:
+        data = self._load()
+        data.setdefault("special_results", {}).pop(category, None)
+        self._save(data)
 
     # ── Auditoría ────────────────────────────────────────────
     def append_audit(self, actor: str, event: str, detail: dict | None = None) -> None:
@@ -524,6 +585,54 @@ class SupabaseStore:
             )
         return True, "ok"
 
+    # ── Pronósticos especiales / premios ─────────────────────
+    def get_special_predictions(self, username: str) -> dict:
+        try:
+            rows = (self.client.table("quinela_special_predictions")
+                    .select("category,value,updated_at")
+                    .eq("username", user_key(username)).execute().data or [])
+            return {r["category"]: r for r in rows}
+        except Exception:
+            return {}
+
+    def list_all_special_predictions(self) -> dict:
+        try:
+            rows = (self.client.table("quinela_special_predictions")
+                    .select("username,category,value,updated_at").execute().data or [])
+        except Exception:
+            return {}
+        out: dict = {}
+        for r in rows:
+            out.setdefault(r["username"], {})[r["category"]] = r
+        return out
+
+    def upsert_special_prediction(self, username: str, category: str, value: str) -> None:
+        self.client.table("quinela_special_predictions").upsert({
+            "username": user_key(username),
+            "category": category,
+            "value": str(value).strip(),
+            "updated_at": datetime.now(APP_TZ).isoformat(),
+        }, on_conflict="username,category").execute()
+
+    def list_special_results(self) -> dict:
+        try:
+            rows = (self.client.table("quinela_special_results")
+                    .select("category,value,points,updated_at").execute().data or [])
+            return {r["category"]: r for r in rows}
+        except Exception:
+            return {}
+
+    def upsert_special_result(self, category: str, value: str, points: int) -> None:
+        self.client.table("quinela_special_results").upsert({
+            "category": category,
+            "value": str(value).strip(),
+            "points": int(points),
+            "updated_at": datetime.now(APP_TZ).isoformat(),
+        }, on_conflict="category").execute()
+
+    def delete_special_result(self, category: str) -> None:
+        self.client.table("quinela_special_results").delete().eq("category", category).execute()
+
     def append_audit(self, actor: str, event: str, detail: dict | None = None) -> None:
         try:
             self.client.table("quinela_audit_log").insert({
@@ -549,6 +658,8 @@ class SupabaseStore:
             "predictions": self.list_all_predictions(),
             "results":     self.list_results(),
             "locks":       self.list_locks(),
+            "special_predictions": self.list_all_special_predictions(),
+            "special_results": self.list_special_results(),
             "audit_log":   self.list_audit(500),
             "exported_at": datetime.now(APP_TZ).isoformat(),
         }
@@ -581,6 +692,10 @@ def _cached_all_preds():     return STORE.list_all_predictions()
 def _cached_results():       return STORE.list_results()
 @st.cache_data(ttl=15, show_spinner=False)
 def _cached_locks():         return STORE.list_locks()
+@st.cache_data(ttl=15, show_spinner=False)
+def _cached_special_preds(): return STORE.list_all_special_predictions()
+@st.cache_data(ttl=15, show_spinner=False)
+def _cached_special_results(): return STORE.list_special_results()
 
 def get_live_data():
     """Una sola función de entrada para todos los datos vivos."""
@@ -589,6 +704,8 @@ def get_live_data():
         _cached_all_preds(),
         _cached_results(),
         _cached_locks(),
+        _cached_special_preds(),
+        _cached_special_results(),
     )
 
 def invalidate_cache():
@@ -597,6 +714,8 @@ def invalidate_cache():
     _cached_all_preds.clear()
     _cached_results.clear()
     _cached_locks.clear()
+    _cached_special_preds.clear()
+    _cached_special_results.clear()
 
 # ──────────────────────────────────────────────────────────────
 # CALENDARIO
@@ -786,6 +905,193 @@ def build_predictions_export(users, all_preds, results) -> pd.DataFrame:
 
 
 # ──────────────────────────────────────────────────────────────
+# TABLAS POR ETAPA Y PREMIOS v9
+# ──────────────────────────────────────────────────────────────
+SPECIAL_CATEGORIES = [
+    {"key": "campeon", "label": "Campeón", "icon": "🏆", "kind": "team", "help": "Equipo que levantará la Copa del Mundo."},
+    {"key": "subcampeon", "label": "Subcampeón", "icon": "🥈", "kind": "team", "help": "Equipo que perderá la final."},
+    {"key": "tercer_lugar", "label": "Tercer lugar", "icon": "🥉", "kind": "team", "help": "Ganador del partido por tercer lugar."},
+    {"key": "balon_oro", "label": "Balón de Oro", "icon": "🟡", "kind": "player", "help": "Mejor jugador del torneo."},
+    {"key": "bota_oro", "label": "Bota de Oro", "icon": "👟", "kind": "player", "help": "Máximo goleador del torneo."},
+    {"key": "guante_oro", "label": "Guante de Oro", "icon": "🧤", "kind": "player", "help": "Mejor portero del torneo."},
+    {"key": "mejor_joven", "label": "Mejor jugador joven", "icon": "🌟", "kind": "player", "help": "Jugador joven más destacado."},
+    {"key": "fair_play", "label": "Premio Fair Play", "icon": "🤝", "kind": "team", "help": "Selección con mejor juego limpio."},
+    {"key": "caballo_negro", "label": "Caballo negro", "icon": "🐎", "kind": "team", "help": "Selección revelación o sorpresa del torneo."},
+]
+SPECIAL_LABELS = {c["key"]: c["label"] for c in SPECIAL_CATEGORIES}
+
+
+def _norm_answer(value: Any) -> str:
+    return re.sub(r"\s+", " ", str(value or "").strip()).casefold()
+
+
+def _team_options() -> list[str]:
+    teams = set()
+    for r in MATCHES.itertuples(index=False):
+        for name in [str(r.home), str(r.away)]:
+            low = name.casefold()
+            if name and "ganador" not in low and "perdedor" not in low and "grupo" not in low:
+                teams.add(name)
+    return sorted(teams)
+
+
+def match_ids_for_stage(stage: str) -> set[str]:
+    if stage == "grupos":
+        buckets = set(GROUPS)
+    elif stage == "eliminatorias":
+        buckets = set(KNOCKOUT_ROUNDS)
+    else:
+        buckets = set(GROUPS + KNOCKOUT_ROUNDS)
+    return {r.match_id for r in MATCHES.itertuples(index=False) if r.group in buckets}
+
+
+def build_stage_standings(users, all_preds, results, stage: str, include_specials: bool = False,
+                          all_special_preds: dict | None = None, special_results: dict | None = None) -> pd.DataFrame:
+    mids = match_ids_for_stage(stage)
+    rows = []
+    for u in users:
+        ukey    = user_key(u["username"])
+        display = u.get("display_name") or u["username"]
+        preds   = all_preds.get(ukey, {})
+        pts = exactos = correctos = evaluados = pronosticados = dif = 0
+        for mid, pred in preds.items():
+            if mid not in mids:
+                continue
+            pronosticados += 1
+            res = results.get(mid)
+            if not res:
+                continue
+            evaluados += 1
+            ph, pa = int(pred["home_goals"]), int(pred["away_goals"])
+            rh, ra = int(res["home_goals"]), int(res["away_goals"])
+            p       = calc_pts(ph, pa, rh, ra)
+            pts      += p
+            exactos  += int(p == POINTS_EXACT)
+            correctos += int(p >= POINTS_RESULT and POINTS_RESULT > 0)
+            dif       += abs(ph - rh) + abs(pa - ra)
+
+        special_pts = special_hits = special_done = 0
+        if include_specials:
+            spreds = (all_special_preds or {}).get(ukey, {})
+            sres   = special_results or {}
+            for cat, official in sres.items():
+                if not official.get("value"):
+                    continue
+                pred = spreds.get(cat, {})
+                if not pred or not pred.get("value"):
+                    continue
+                special_done += 1
+                if _norm_answer(pred.get("value")) == _norm_answer(official.get("value")):
+                    special_hits += 1
+                    special_pts += int(official.get("points", POINTS_SPECIAL) or 0)
+
+        total_pts = pts + special_pts
+        rows.append({
+            "_ukey": ukey,
+            "Usuario": display,
+            "Puntos": total_pts,
+            "Puntos partidos": pts,
+            "Bonus premios": special_pts,
+            "Exactos 🎯": exactos,
+            "Acertados ✅": correctos,
+            "Premios 🏅": special_hits,
+            "Dif. marcador": dif,
+            "Evaluados": evaluados,
+            "Pronosticados": pronosticados,
+            "Promedio": round(pts / evaluados, 2) if evaluados else 0.0,
+        })
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return df
+    return df.sort_values(
+        ["Puntos", "Exactos 🎯", "Acertados ✅", "Premios 🏅", "Dif. marcador", "Pronosticados"],
+        ascending=[False, False, False, False, True, False],
+    ).reset_index(drop=True)
+
+
+def build_global_standings_with_specials(users, all_preds, results, all_special_preds, special_results) -> pd.DataFrame:
+    base = build_stage_standings(users, all_preds, results, "global", include_specials=True,
+                                 all_special_preds=all_special_preds, special_results=special_results)
+    return base
+
+
+def stage_display_df(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df
+    medals = {1: "🥇", 2: "🥈", 3: "🥉"}
+    out = df.drop(columns=["_ukey"], errors="ignore").copy()
+    out.insert(0, "Pos.", [f"{medals.get(i+1, '')} {i+1}" for i in range(len(out))])
+    return out
+
+
+def group_award_rows(group_df: pd.DataFrame) -> list[dict]:
+    if group_df.empty:
+        return []
+
+    def winners(metric: str, mode: str = "max", denom: str | None = None, min_eval: int = 1) -> tuple[str, str]:
+        df = group_df.copy()
+        if min_eval:
+            df = df[df["Evaluados"] >= min_eval]
+        if df.empty:
+            return "—", "Sin partidos evaluados"
+        if denom:
+            vals = df[metric] / df[denom].replace(0, pd.NA)
+            df = df.assign(_metric=vals.fillna(0))
+            metric_col = "_metric"
+        else:
+            metric_col = metric
+        best = df[metric_col].max() if mode == "max" else df[metric_col].min()
+        tie = df[df[metric_col] == best]
+        names = ", ".join(tie["Usuario"].astype(str).head(3).tolist())
+        if len(tie) > 3:
+            names += f" +{len(tie)-3}"
+        if denom:
+            meta = f"{best:.0%}" if best <= 1 else f"{best:.2f}"
+        else:
+            meta = f"{int(best)}" if float(best).is_integer() else f"{best:.2f}"
+        return names, meta
+
+    exact_names, exact_meta = winners("Exactos 🎯")
+    acc_names, acc_meta = winners("Acertados ✅")
+    eff_names, eff_meta = winners("Puntos partidos", denom="Evaluados")
+    dif_names, dif_meta = winners("Dif. marcador", mode="min")
+    part_names, part_meta = winners("Pronosticados")
+    avg_names, avg_meta = winners("Promedio")
+    return [
+        {"icon": "🎯", "label": "Más marcadores exactos", "winner": exact_names, "meta": f"{exact_meta} exactos"},
+        {"icon": "✅", "label": "Más resultados acertados", "winner": acc_names, "meta": f"{acc_meta} aciertos"},
+        {"icon": "📈", "label": "Mayor efectividad", "winner": eff_names, "meta": f"{eff_meta} puntos por partido evaluado"},
+        {"icon": "🧮", "label": "Mejor diferencia acumulada", "winner": dif_names, "meta": f"{dif_meta} goles de diferencia"},
+        {"icon": "📝", "label": "Mayor participación", "winner": part_names, "meta": f"{part_meta} pronósticos"},
+        {"icon": "🔥", "label": "Mejor promedio", "winner": avg_names, "meta": f"{avg_meta} pts/partido"},
+    ]
+
+
+def special_predictions_export(users, all_special_preds, special_results) -> pd.DataFrame:
+    name_by_key = {user_key(u["username"]): (u.get("display_name") or u["username"]) for u in users}
+    rows = []
+    for ukey, preds in (all_special_preds or {}).items():
+        for cat, pred in preds.items():
+            official = (special_results or {}).get(cat, {})
+            ok = ""
+            pts = ""
+            if official.get("value") and pred.get("value"):
+                is_hit = _norm_answer(pred.get("value")) == _norm_answer(official.get("value"))
+                ok = "Sí" if is_hit else "No"
+                pts = int(official.get("points", POINTS_SPECIAL) or 0) if is_hit else 0
+            rows.append({
+                "usuario": name_by_key.get(ukey, ukey),
+                "categoria": SPECIAL_LABELS.get(cat, cat),
+                "pronostico": pred.get("value", ""),
+                "oficial": official.get("value", ""),
+                "acierto": ok,
+                "puntos": pts,
+                "actualizado": pred.get("updated_at", ""),
+            })
+    return pd.DataFrame(rows)
+
+
+# ──────────────────────────────────────────────────────────────
 # COMPONENTES VISUALES v8
 # ──────────────────────────────────────────────────────────────
 def pct_txt(num: int, den: int) -> str:
@@ -824,6 +1130,48 @@ def render_section_title(title: str, subtitle: str = ""):
       <p>{subtitle}</p>
     </div>
     """, unsafe_allow_html=True)
+
+def render_award_card(container, icon: str, label: str, winner: str, meta: str):
+    with container:
+        st.markdown(f"""
+        <div class="award-card">
+          <div class="award-icon">{icon}</div>
+          <div class="award-label">{label}</div>
+          <div class="award-winner">{winner}</div>
+          <div class="award-meta">{meta}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+
+def render_stage_table(title: str, subtitle: str, df: pd.DataFrame, filename: str):
+    render_section_title(title, subtitle)
+    if df.empty:
+        render_empty_state("🏆", "Sin tabla disponible", "Aún no hay participantes o resultados suficientes para esta etapa.")
+        return
+    render_podium(df)
+    st.write("")
+    display_df = stage_display_df(df)
+    max_pts = int(display_df["Puntos"].max()) or 1
+    st.dataframe(
+        display_df,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "Puntos": st.column_config.ProgressColumn("Puntos", max_value=max_pts, format="%d"),
+            "Promedio": st.column_config.NumberColumn(format="%.2f"),
+            "Pos.": st.column_config.TextColumn(width="small"),
+            "Bonus premios": st.column_config.NumberColumn(width="small"),
+            "Premios 🏅": st.column_config.NumberColumn(width="small"),
+        },
+    )
+    st.download_button(
+        "⬇️ Descargar CSV",
+        data=display_df.to_csv(index=False).encode("utf-8-sig"),
+        file_name=filename,
+        mime="text/csv",
+        use_container_width=True,
+    )
+
 
 # FIX: podio dinámico — muestra min(3, len(standings)) lugares reales
 def render_podium(standings: pd.DataFrame):
@@ -1094,14 +1442,14 @@ st.markdown("""
     <span class="hero-pill">🎯 Quinela institucional</span>
   </div>
   <h1 class="hero-title">Quinela Mundial 2026</h1>
-  <p class="hero-subtitle">Pronostica fase de grupos y eliminatorias hasta la final.</p>
+  <p class="hero-subtitle">Pronostica fase de grupos y eliminatorias hasta la final. Sigue el ranking global con una experiencia clara, visual y lista para la comunidad.</p>
 </div>
 """, unsafe_allow_html=True)
 
 # ──────────────────────────────────────────────────────────────
 # SIDEBAR
 # ──────────────────────────────────────────────────────────────
-USERS, ALL_PREDS, RESULTS, LOCKS = get_live_data()
+USERS, ALL_PREDS, RESULTS, LOCKS, ALL_SPECIAL_PREDS, SPECIAL_RESULTS = get_live_data()
 STANDINGS = build_standings(USERS, ALL_PREDS, RESULTS)
 
 with st.sidebar:
@@ -1181,71 +1529,30 @@ with st.sidebar:
 # PESTAÑAS
 # ──────────────────────────────────────────────────────────────
 tab_table, tab_preds, tab_results_tab, tab_bracket_tab, tab_rules_tab, tab_admin_tab = st.tabs([
-    "🏆 Tabla General", "📝 Mis Pronósticos", "📊 Resultados", "🧬 Eliminatorias", "📘 Reglamento", "⚙️ Administración"
+    "🏆 Tablas y Premios", "📝 Mis Pronósticos", "📊 Resultados", "🧬 Eliminatorias", "📘 Reglamento", "⚙️ Administración"
 ])
 
 # ════════════════════════════════════════
-# 1 · TABLA GENERAL
+# 1 · TABLAS Y PREMIOS POR ETAPA
 # ════════════════════════════════════════
 with tab_table:
     render_section_title(
-        "Clasificación global",
-        "Podio, tabla completa y avance general de la quinela."
+        "Tablas por etapa",
+        "Ranking independiente para fase de grupos y eliminatorias, más distinciones automáticas y tabla global de referencia."
     )
 
-    # Countdown al próximo partido — visible para todos
     render_countdown()
 
-    if STANDINGS.empty:
-        render_empty_state(
-            "🏆",
-            "La competencia aún no arranca",
-            "Cuando existan participantes y pronósticos, aquí aparecerá el podio y la clasificación completa."
-        )
-    else:
-        render_podium(STANDINGS)
-        st.write("")
-        medals  = {1: "🥇", 2: "🥈", 3: "🥉"}
-        max_pts = int(STANDINGS["Puntos"].max()) or 1
-
-        # Columna de tendencia: compara posición actual vs posición anterior
-        # (guardamos snapshot en session_state para comparar entre recargas)
-        prev_pos: dict = st.session_state.get("_prev_positions", {})
-        cur_pos        = {row["_ukey"]: i for i, row in STANDINGS.reset_index().iterrows()}
-        trend_symbols  = []
-        for ukey in STANDINGS["_ukey"]:
-            prev = prev_pos.get(ukey)
-            cur  = cur_pos.get(ukey, 0)
-            if prev is None or prev == cur:
-                trend_symbols.append("—")
-            elif cur < prev:
-                trend_symbols.append("↑")
-            else:
-                trend_symbols.append("↓")
-        st.session_state["_prev_positions"] = cur_pos
-
-        display_df = STANDINGS.drop(columns=["_ukey"], errors="ignore").copy()
-        display_df.insert(0, "Pos.", [
-            f"{medals.get(i+1, '')} {i+1}" for i in range(len(display_df))
-        ])
-        display_df.insert(1, "±", trend_symbols)
-        st.dataframe(
-            display_df,
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                "Puntos":   st.column_config.ProgressColumn("Puntos", max_value=max_pts, format="%d"),
-                "Promedio": st.column_config.NumberColumn(format="%.2f"),
-                "Pos.":     st.column_config.TextColumn(width="small"),
-                "±":        st.column_config.TextColumn("±", width="small"),
-            },
-        )
-        st.download_button(
-            "⬇️ Descargar tabla CSV",
-            data=display_df.to_csv(index=False).encode("utf-8-sig"),
-            file_name="tabla_quinela.csv",
-            mime="text/csv",
-        )
+    GROUP_STANDINGS = build_stage_standings(USERS, ALL_PREDS, RESULTS, "grupos")
+    KO_STANDINGS = build_stage_standings(
+        USERS, ALL_PREDS, RESULTS, "eliminatorias",
+        include_specials=True,
+        all_special_preds=ALL_SPECIAL_PREDS,
+        special_results=SPECIAL_RESULTS,
+    )
+    GLOBAL_STANDINGS = build_global_standings_with_specials(
+        USERS, ALL_PREDS, RESULTS, ALL_SPECIAL_PREDS, SPECIAL_RESULTS
+    )
 
     n_bloqueados = (
         sum(1 for r in MATCHES.itertuples(index=False) if is_locked(r, LOCKS, RESULTS))
@@ -1254,14 +1561,98 @@ with tab_table:
     k1, k2, k3, k4, k5 = st.columns(5)
     render_kpi(k1, "Resultados", f"{len(RESULTS)} / {TOTAL_MATCHES}", "Marcadores oficiales cargados", "📊")
     render_kpi(k2, "Participantes", len(USERS), "Usuarios registrados", "👥")
-    render_kpi(k3, "Pronósticos", sum(len(v) for v in ALL_PREDS.values()), "Registros totales guardados", "📝")
+    render_kpi(k3, "Pronósticos", sum(len(v) for v in ALL_PREDS.values()), "Marcadores guardados", "📝")
     render_kpi(k4, "Bloqueados", n_bloqueados, "Partidos cerrados a edición", "🔒")
-    render_kpi(k5, "Etapas", "2", f"{GROUP_MATCHES} grupos + {KNOCKOUT_MATCHES} eliminatorias", "🏁")
+    render_kpi(k5, "Premios especiales", len(SPECIAL_RESULTS), f"Acierto vale {POINTS_SPECIAL} pts por defecto", "🏅")
 
-    # FIX: gráfica con colores IMP en lugar de st.bar_chart sin color
-    if not STANDINGS.empty and len(RESULTS) > 0:
-        st.markdown("#### Top 10 por puntos")
-        render_top10_chart(STANDINGS)
+    st.write("")
+    t_groups, t_ko, t_global, t_stats = st.tabs([
+        "🌎 Fase de grupos", "🏆 Eliminatorias", "📌 Global", "📈 Estadísticas"
+    ])
+
+    with t_groups:
+        render_stage_table(
+            "Tabla · Fase de grupos",
+            "Solo considera los partidos M001–M072. Ideal para premiar al mejor desempeño de la primera etapa.",
+            GROUP_STANDINGS,
+            "tabla_fase_grupos.csv",
+        )
+        st.markdown("#### Distinciones de la primera etapa")
+        awards = group_award_rows(GROUP_STANDINGS)
+        if not awards:
+            render_empty_state("🎖️", "Aún no hay distinciones", "Carga resultados de fase de grupos para activar las menciones automáticas.")
+        else:
+            for i in range(0, len(awards), 3):
+                cols = st.columns(3)
+                for j, col in enumerate(cols):
+                    if i + j < len(awards):
+                        a = awards[i + j]
+                        render_award_card(col, a["icon"], a["label"], a["winner"], a["meta"])
+
+    with t_ko:
+        render_stage_table(
+            "Tabla · Eliminatorias",
+            "Suma los partidos M073–M104 y los puntos de premios especiales cuando el administrador cargue los ganadores oficiales.",
+            KO_STANDINGS,
+            "tabla_eliminatorias.csv",
+        )
+        st.markdown("#### Premios especiales de eliminatorias / torneo")
+        if not SPECIAL_RESULTS:
+            st.info("Aún no hay premios oficiales cargados. Los usuarios pueden registrar sus pronósticos en la pestaña Mis Pronósticos.")
+        special_rows = []
+        for c in SPECIAL_CATEGORIES:
+            official = SPECIAL_RESULTS.get(c["key"], {})
+            total_preds = sum(1 for preds in ALL_SPECIAL_PREDS.values() if preds.get(c["key"], {}).get("value"))
+            hits = 0
+            if official.get("value"):
+                for preds in ALL_SPECIAL_PREDS.values():
+                    pred = preds.get(c["key"], {})
+                    if pred.get("value") and _norm_answer(pred.get("value")) == _norm_answer(official.get("value")):
+                        hits += 1
+            special_rows.append({
+                "Premio": f"{c['icon']} {c['label']}",
+                "Oficial": official.get("value", "—"),
+                "Puntos": int(official.get("points", POINTS_SPECIAL)) if official else POINTS_SPECIAL,
+                "Pronósticos": total_preds,
+                "Aciertos": hits if official.get("value") else "—",
+            })
+        st.dataframe(pd.DataFrame(special_rows), use_container_width=True, hide_index=True)
+
+    with t_global:
+        render_stage_table(
+            "Tabla global de referencia",
+            "Suma fase de grupos, eliminatorias y bonus de premios especiales. La premiación puede usar tablas separadas por etapa.",
+            GLOBAL_STANDINGS,
+            "tabla_global_quinela.csv",
+        )
+        if not GLOBAL_STANDINGS.empty and len(RESULTS) > 0:
+            st.markdown("#### Top 10 global")
+            render_top10_chart(GLOBAL_STANDINGS)
+
+    with t_stats:
+        render_section_title("Estadísticas generales", "Lectura rápida del avance y desempeño de la quinela.")
+        if GROUP_STANDINGS.empty and KO_STANDINGS.empty:
+            render_empty_state("📈", "Sin estadísticas todavía", "Cuando haya pronósticos y resultados, aquí aparecerán los líderes por rubro.")
+        else:
+            c1, c2 = st.columns(2)
+            with c1:
+                st.markdown("##### Fase de grupos")
+                stats_cols = st.columns(2)
+                if not GROUP_STANDINGS.empty:
+                    top_exact = GROUP_STANDINGS.sort_values(["Exactos 🎯", "Puntos"], ascending=False).iloc[0]
+                    top_avg = GROUP_STANDINGS[GROUP_STANDINGS["Evaluados"] > 0].sort_values(["Promedio", "Puntos"], ascending=False)
+                    render_award_card(stats_cols[0], "🎯", "Líder en exactos", str(top_exact["Usuario"]), f"{int(top_exact['Exactos 🎯'])} marcadores exactos")
+                    if not top_avg.empty:
+                        r = top_avg.iloc[0]
+                        render_award_card(stats_cols[1], "📈", "Mejor promedio", str(r["Usuario"]), f"{float(r['Promedio']):.2f} pts/partido")
+            with c2:
+                st.markdown("##### Eliminatorias")
+                stats_cols = st.columns(2)
+                if not KO_STANDINGS.empty:
+                    top_ko = KO_STANDINGS.iloc[0]
+                    top_bonus = KO_STANDINGS.sort_values(["Bonus premios", "Puntos"], ascending=False).iloc[0]
+                    render_award_card(stats_cols[0], "🏆", "Líder eliminatorias", str(top_ko["Usuario"]), f"{int(top_ko['Puntos'])} pts")
+                    render_award_card(stats_cols[1], "🏅", "Más bonus de premios", str(top_bonus["Usuario"]), f"{int(top_bonus['Bonus premios'])} pts bonus")
 
 # ════════════════════════════════════════
 # 2 · MIS PRONÓSTICOS
@@ -1298,6 +1689,61 @@ with tab_preds:
                 "Etapa": st.column_config.TextColumn(width="medium"),
             },
         )
+
+        with st.expander("🏅 Pronósticos especiales de eliminatorias / torneo", expanded=True):
+            st.caption(
+                "Estos pronósticos funcionan como bonus de segunda etapa. Se evalúan cuando el administrador carga el ganador oficial de cada premio. "
+                "Una vez cargado el resultado oficial de un premio, ese pronóstico queda cerrado."
+            )
+            my_specials = STORE.get_special_predictions(current_user)
+            team_opts = _team_options()
+
+            for i in range(0, len(SPECIAL_CATEGORIES), 3):
+                cols = st.columns(3)
+                for j, col in enumerate(cols):
+                    if i + j >= len(SPECIAL_CATEGORIES):
+                        continue
+                    cat = SPECIAL_CATEGORIES[i + j]
+                    key = cat["key"]
+                    official = SPECIAL_RESULTS.get(key, {})
+                    existing = my_specials.get(key, {}).get("value", "")
+                    locked_special = bool(official.get("value"))
+                    with col:
+                        st.markdown(f"""
+                        <div class="special-card">
+                          <div class="special-label">{cat['icon']} {cat['label']}</div>
+                          <div class="special-help">{cat['help']}</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        if locked_special:
+                            st.success(f"Oficial: {official.get('value')} · {int(official.get('points', POINTS_SPECIAL))} pts")
+                            if existing:
+                                ok = _norm_answer(existing) == _norm_answer(official.get("value"))
+                                st.info(f"Tu pronóstico: **{existing}** · {'✅ acierto' if ok else '❌ no acertó'}")
+                            else:
+                                st.caption("Sin pronóstico registrado antes del cierre.")
+                            continue
+
+                        with st.form(key=f"sp_{key}"):
+                            if cat["kind"] == "team" and team_opts:
+                                options = [""] + team_opts + ["Otro / escribir manualmente"]
+                                default_idx = options.index(existing) if existing in options else 0
+                                sel = st.selectbox(cat["label"], options, index=default_idx, key=f"sp_sel_{key}")
+                                manual = ""
+                                if sel == "Otro / escribir manualmente" or (existing and existing not in options):
+                                    manual = st.text_input("Escribir opción", value=existing if existing not in team_opts else "", key=f"sp_txt_{key}")
+                                value = manual.strip() if manual.strip() else sel.strip()
+                            else:
+                                value = st.text_input(cat["label"], value=existing, placeholder="Nombre del jugador / selección", key=f"sp_txt_{key}")
+                            if st.form_submit_button("Guardar", use_container_width=True):
+                                if not value.strip():
+                                    st.warning("Escribe o selecciona un pronóstico.")
+                                else:
+                                    STORE.upsert_special_prediction(current_user, key, value)
+                                    STORE.append_audit(current_user, "special_prediction_saved", {"category": key})
+                                    invalidate_cache()
+                                    st.success("Pronóstico especial guardado ✓")
+                                    st.rerun()
 
         with st.expander("📈 Ver avance detallado por grupo", expanded=False):
             gp = group_progress_df(my_preds)
@@ -1521,10 +1967,11 @@ with tab_rules_tab:
     )
 
     # Tarjetas de puntos con diseño del sistema
-    r1, r2, r3 = st.columns(3)
+    r1, r2, r3, r4 = st.columns(4)
     render_kpi(r1, "Marcador exacto",    POINTS_EXACT,  "Adivinaste el resultado y el marcador", "🎯")
     render_kpi(r2, "Resultado correcto", POINTS_RESULT, "Adivinaste quién ganó (o empate)", "✅")
-    render_kpi(r3, "Puntos máximos",     TOTAL_MATCHES * POINTS_EXACT, f"{GROUP_MATCHES} grupos + {KNOCKOUT_MATCHES} eliminatorias", "🏆")
+    render_kpi(r3, "Premio especial",    POINTS_SPECIAL, "Valor por defecto configurable", "🏅")
+    render_kpi(r4, "Puntos máximos",     TOTAL_MATCHES * POINTS_EXACT + len(SPECIAL_CATEGORIES) * POINTS_SPECIAL, f"{GROUP_MATCHES} grupos + {KNOCKOUT_MATCHES} eliminatorias + premios", "🏆")
 
     st.markdown(f"""
 ---
@@ -1541,7 +1988,11 @@ with tab_rules_tab:
 ---
 #### Dos etapas de competencia
 
-La quinela considera **fase de grupos** y **eliminatorias**: 16avos, octavos, cuartos, semifinales, partido por tercer lugar y final. El ranking global suma todos los partidos cargados en el calendario.
+La quinela considera **fase de grupos** y **eliminatorias**: 16avos, octavos, cuartos, semifinales, partido por tercer lugar y final.
+
+- **Tabla de fase de grupos:** solo suma M001–M072. Incluye menciones automáticas como más marcadores exactos, más aciertos, mejor efectividad y mejor diferencia acumulada.
+- **Tabla de eliminatorias:** suma M073–M104 y los **premios especiales** cuando el administrador capture los ganadores oficiales.
+- **Tabla global:** es una referencia acumulada de ambas etapas y los bonus especiales.
 
 #### Bloqueo de pronósticos
 
@@ -1553,6 +2004,10 @@ Una vez bloqueado, el pronóstico **ya no puede modificarse**.
 
 Puedes cambiar tu pronóstico **cuantas veces quieras** mientras el partido esté abierto.
 Siempre se guarda el último valor confirmado.
+
+#### Premios especiales de segunda etapa
+
+Incluyen campeón, subcampeón, tercer lugar, Balón de Oro, Bota de Oro, Guante de Oro, mejor joven, Fair Play y caballo negro. Cada categoría se bloquea cuando el administrador publica el ganador oficial de esa categoría. El puntaje puede ajustarse desde administración; por defecto vale **{POINTS_SPECIAL} pts**.
 
 ---
 *{TOTAL_MATCHES} partidos · 2 etapas · {GROUP_MATCHES} de grupos + {KNOCKOUT_MATCHES} de eliminatorias*
@@ -1585,8 +2040,8 @@ with tab_admin_tab:
     if st.session_state.is_admin:
         st.success("✅ Modo administrador activo")
 
-        adm_res_tab, adm_lock_tab, adm_users_tab, adm_coverage_tab, adm_audit_tab, adm_export_tab = st.tabs([
-            "Resultados", "Bloqueos manuales", "Participantes", "Cobertura", "Auditoría", "Respaldo"
+        adm_res_tab, adm_lock_tab, adm_special_tab, adm_users_tab, adm_coverage_tab, adm_audit_tab, adm_export_tab = st.tabs([
+            "Resultados", "Bloqueos manuales", "Premios especiales", "Participantes", "Cobertura", "Auditoría", "Respaldo"
         ])
 
         # ── Resultados ────────────────────────────────────────
@@ -1704,6 +2159,93 @@ with tab_admin_tab:
                 invalidate_cache()
                 st.success("Bloqueo actualizado.")
                 st.rerun()
+
+        # ── Premios especiales ─────────────────────────────────
+        with adm_special_tab:
+            st.markdown("#### Cargar ganadores oficiales de premios especiales")
+            st.caption(
+                "Estos premios suman puntos bonus a la tabla de eliminatorias. "
+                "Al cargar un ganador oficial, el pronóstico queda cerrado para esa categoría."
+            )
+            cat_map = {c["key"]: c for c in SPECIAL_CATEGORIES}
+            cat_key = st.selectbox(
+                "Premio / pronóstico especial",
+                [c["key"] for c in SPECIAL_CATEGORIES],
+                format_func=lambda k: f"{cat_map[k]['icon']} {cat_map[k]['label']}",
+                key="adm_special_cat",
+            )
+            cat = cat_map[cat_key]
+            existing = SPECIAL_RESULTS.get(cat_key, {})
+            st.info(f"{cat['help']} · Puntaje por defecto: {POINTS_SPECIAL} pts")
+            team_opts = _team_options()
+            if cat["kind"] == "team" and team_opts:
+                options = [""] + team_opts + ["Otro / escribir manualmente"]
+                old = existing.get("value", "")
+                idx = options.index(old) if old in options else 0
+                selected = st.selectbox("Ganador oficial", options, index=idx, key="adm_special_sel")
+                manual_val = ""
+                if selected == "Otro / escribir manualmente" or (old and old not in options):
+                    manual_val = st.text_input("Escribir ganador oficial", value=old if old not in team_opts else "", key="adm_special_manual")
+                official_val = manual_val.strip() if manual_val.strip() else selected.strip()
+            else:
+                official_val = st.text_input("Ganador oficial", value=existing.get("value", ""), key="adm_special_value")
+            pts_special = st.number_input(
+                "Puntos por acertar", min_value=0, max_value=50,
+                value=int(existing.get("points", POINTS_SPECIAL) if existing else POINTS_SPECIAL),
+                key="adm_special_points",
+            )
+            csave, cdel = st.columns(2)
+            if csave.button("🏅 Guardar ganador oficial", type="primary", use_container_width=True):
+                if not official_val.strip():
+                    st.error("Indica el ganador oficial.")
+                else:
+                    STORE.upsert_special_result(cat_key, official_val, int(pts_special))
+                    STORE.append_audit(
+                        st.session_state.current_user or "admin", "special_result_published",
+                        {"category": cat_key, "value": official_val, "points": int(pts_special)},
+                    )
+                    invalidate_cache()
+                    st.success("Premio especial guardado.")
+                    st.rerun()
+            if cdel.button("🗑️ Eliminar ganador oficial", type="secondary", use_container_width=True):
+                STORE.delete_special_result(cat_key)
+                STORE.append_audit(
+                    st.session_state.current_user or "admin", "special_result_deleted",
+                    {"category": cat_key},
+                )
+                invalidate_cache()
+                st.success("Ganador oficial eliminado. Los usuarios podrán editar de nuevo esa categoría.")
+                st.rerun()
+
+            st.divider()
+            st.markdown("#### Estado de premios especiales")
+            rows = []
+            for c in SPECIAL_CATEGORIES:
+                official = SPECIAL_RESULTS.get(c["key"], {})
+                total_preds = sum(1 for preds in ALL_SPECIAL_PREDS.values() if preds.get(c["key"], {}).get("value"))
+                hits = 0
+                if official.get("value"):
+                    for preds in ALL_SPECIAL_PREDS.values():
+                        pred = preds.get(c["key"], {})
+                        if pred.get("value") and _norm_answer(pred.get("value")) == _norm_answer(official.get("value")):
+                            hits += 1
+                rows.append({
+                    "Premio": f"{c['icon']} {c['label']}",
+                    "Oficial": official.get("value", "—"),
+                    "Puntos": int(official.get("points", POINTS_SPECIAL)) if official else POINTS_SPECIAL,
+                    "Pronósticos": total_preds,
+                    "Aciertos": hits if official.get("value") else "—",
+                })
+            st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+            sp_export = special_predictions_export(USERS, ALL_SPECIAL_PREDS, SPECIAL_RESULTS)
+            if not sp_export.empty:
+                st.download_button(
+                    "⬇️ Descargar pronósticos especiales CSV",
+                    data=sp_export.to_csv(index=False).encode("utf-8-sig"),
+                    file_name="quinela_pronosticos_especiales.csv",
+                    mime="text/csv",
+                    use_container_width=True,
+                )
 
         # ── Participantes + reset de contraseña ───────────────
         with adm_users_tab:

@@ -1094,7 +1094,7 @@ st.markdown("""
     <span class="hero-pill">🎯 Quinela institucional</span>
   </div>
   <h1 class="hero-title">Quinela Mundial 2026</h1>
-  <p class="hero-subtitle">Pronostica fase de grupos y eliminatorias hasta la final. Sigue el ranking global con una experiencia clara, visual y lista para la comunidad.</p>
+  <p class="hero-subtitle">Pronostica fase de grupos y eliminatorias hasta la final.</p>
 </div>
 """, unsafe_allow_html=True)
 

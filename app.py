@@ -2601,7 +2601,7 @@ with tab_admin_tab:
                 st.error("La app está usando JSON local. Para producción configura SUPABASE_URL y SUPABASE_SERVICE_ROLE_KEY en Secrets.")
             else:
                 st.success("Supabase activo.")
-            st.caption("Esta pestaña no expone credenciales; solo verifica si la configuración requerida está presente.")
+            st.caption("VERIFICACIÓN")
 
         if st.button("Salir de administración", type="secondary", key="adm_logout_button"):
             st.session_state.is_admin = False

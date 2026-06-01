@@ -71,35 +71,35 @@ M069,J,Argelia,Austria,2026-06-27,Arrowhead Stadium Kansas City,2026-06-27T17:00
 M070,J,Jordania,Argentina,2026-06-27,AT&T Stadium Dallas,2026-06-27T17:00:00-06:00
 M071,K,Colombia,Portugal,2026-06-27,Hard Rock Stadium Miami,2026-06-27T17:00:00-06:00
 M072,K,RD Congo,Uzbekistán,2026-06-27,Mercedes-Benz Stadium Atlanta,2026-06-27T17:00:00-06:00
-M073,16avos,Subcampeón Grupo A,Subcampeón Grupo B,2026-06-28,SoFi Stadium Los Ángeles,
-M074,16avos,Ganador Grupo E,3.º Grupo A/B/C/D/F,2026-06-29,Gillette Stadium Boston,
-M075,16avos,Ganador Grupo F,Subcampeón Grupo C,2026-06-29,Estadio BBVA Monterrey,
-M076,16avos,Ganador Grupo C,Subcampeón Grupo F,2026-06-29,NRG Stadium Houston,
-M077,16avos,Ganador Grupo I,3.º Grupo C/D/F/G/H,2026-06-30,MetLife Stadium Nueva York/Nueva Jersey,
-M078,16avos,Subcampeón Grupo E,Subcampeón Grupo I,2026-06-30,AT&T Stadium Dallas,
-M079,16avos,Ganador Grupo A,3.º Grupo C/E/F/H/I,2026-06-30,Estadio Azteca Ciudad de México,
-M080,16avos,Ganador Grupo L,3.º Grupo E/H/I/J/K,2026-07-01,Mercedes-Benz Stadium Atlanta,
-M081,16avos,Ganador Grupo D,3.º Grupo B/E/F/I/J,2026-07-01,Levi’s Stadium San Francisco,
-M082,16avos,Ganador Grupo G,3.º Grupo A/E/H/I/J,2026-07-01,Lumen Field Seattle,
-M083,16avos,Subcampeón Grupo K,Subcampeón Grupo L,2026-07-02,BMO Field Toronto,
-M084,16avos,Ganador Grupo H,Subcampeón Grupo J,2026-07-02,SoFi Stadium Los Ángeles,
-M085,16avos,Ganador Grupo B,3.º Grupo E/F/G/I/J,2026-07-02,BC Place Vancouver,
-M086,16avos,Ganador Grupo J,Subcampeón Grupo H,2026-07-03,Hard Rock Stadium Miami,
-M087,16avos,Ganador Grupo K,3.º Grupo D/E/I/J/L,2026-07-03,Arrowhead Stadium Kansas City,
-M088,16avos,Subcampeón Grupo D,Subcampeón Grupo G,2026-07-03,AT&T Stadium Dallas,
-M089,Octavos,Ganador M074,Ganador M077,2026-07-04,Lincoln Financial Field Philadelphia,
-M090,Octavos,Ganador M073,Ganador M075,2026-07-04,NRG Stadium Houston,
-M091,Octavos,Ganador M076,Ganador M078,2026-07-05,MetLife Stadium Nueva York/Nueva Jersey,
-M092,Octavos,Ganador M079,Ganador M080,2026-07-05,Estadio Azteca Ciudad de México,
-M093,Octavos,Ganador M083,Ganador M084,2026-07-06,AT&T Stadium Dallas,
-M094,Octavos,Ganador M081,Ganador M082,2026-07-06,Lumen Field Seattle,
-M095,Octavos,Ganador M086,Ganador M088,2026-07-07,Mercedes-Benz Stadium Atlanta,
-M096,Octavos,Ganador M085,Ganador M087,2026-07-07,BC Place Vancouver,
-M097,Cuartos,Ganador M089,Ganador M090,2026-07-09,Gillette Stadium Boston,
-M098,Cuartos,Ganador M093,Ganador M094,2026-07-10,SoFi Stadium Los Ángeles,
-M099,Cuartos,Ganador M091,Ganador M092,2026-07-11,Hard Rock Stadium Miami,
-M100,Cuartos,Ganador M095,Ganador M096,2026-07-11,Arrowhead Stadium Kansas City,
-M101,Semifinales,Ganador M097,Ganador M098,2026-07-14,AT&T Stadium Dallas,
-M102,Semifinales,Ganador M099,Ganador M100,2026-07-15,Mercedes-Benz Stadium Atlanta,
-M103,Tercer lugar,Perdedor M101,Perdedor M102,2026-07-18,Hard Rock Stadium Miami,
-M104,Final,Ganador M101,Ganador M102,2026-07-19,MetLife Stadium Nueva York/Nueva Jersey,
+M073,16avos,Subcampeón Grupo A,Subcampeón Grupo B,2026-06-28,SoFi Stadium Los Ángeles,2026-06-28T13:00:00-06:00
+M074,16avos,Ganador Grupo E,3.º Grupo A/B/C/D/F,2026-06-29,Gillette Stadium Boston,2026-06-29T14:30:00-06:00
+M075,16avos,Ganador Grupo F,Subcampeón Grupo C,2026-06-29,Estadio BBVA Monterrey,2026-06-29T19:00:00-06:00
+M076,16avos,Ganador Grupo C,Subcampeón Grupo F,2026-06-29,NRG Stadium Houston,2026-06-29T11:00:00-06:00
+M077,16avos,Ganador Grupo I,3.º Grupo C/D/F/G/H,2026-06-30,MetLife Stadium Nueva York/Nueva Jersey,2026-06-30T15:00:00-06:00
+M078,16avos,Subcampeón Grupo E,Subcampeón Grupo I,2026-06-30,AT&T Stadium Dallas,2026-06-30T11:00:00-06:00
+M079,16avos,Ganador Grupo A,3.º Grupo C/E/F/H/I,2026-06-30,Estadio Azteca Ciudad de México,2026-06-30T19:00:00-06:00
+M080,16avos,Ganador Grupo L,3.º Grupo E/H/I/J/K,2026-07-01,Mercedes-Benz Stadium Atlanta,2026-07-01T10:00:00-06:00
+M081,16avos,Ganador Grupo D,3.º Grupo B/E/F/I/J,2026-07-01,Levi’s Stadium San Francisco,2026-07-01T18:00:00-06:00
+M082,16avos,Ganador Grupo G,3.º Grupo A/E/H/I/J,2026-07-01,Lumen Field Seattle,2026-07-01T14:00:00-06:00
+M083,16avos,Subcampeón Grupo K,Subcampeón Grupo L,2026-07-02,BMO Field Toronto,2026-07-02T17:00:00-06:00
+M084,16avos,Ganador Grupo H,Subcampeón Grupo J,2026-07-02,SoFi Stadium Los Ángeles,2026-07-02T13:00:00-06:00
+M085,16avos,Ganador Grupo B,3.º Grupo E/F/G/I/J,2026-07-02,BC Place Vancouver,2026-07-02T21:00:00-06:00
+M086,16avos,Ganador Grupo J,Subcampeón Grupo H,2026-07-03,Hard Rock Stadium Miami,2026-07-03T16:00:00-06:00
+M087,16avos,Ganador Grupo K,3.º Grupo D/E/I/J/L,2026-07-03,Arrowhead Stadium Kansas City,2026-07-03T19:30:00-06:00
+M088,16avos,Subcampeón Grupo D,Subcampeón Grupo G,2026-07-03,AT&T Stadium Dallas,2026-07-03T12:00:00-06:00
+M089,Octavos,Ganador M074,Ganador M077,2026-07-04,Lincoln Financial Field Philadelphia,2026-07-04T15:00:00-06:00
+M090,Octavos,Ganador M073,Ganador M075,2026-07-04,NRG Stadium Houston,2026-07-04T11:00:00-06:00
+M091,Octavos,Ganador M076,Ganador M078,2026-07-05,MetLife Stadium Nueva York/Nueva Jersey,2026-07-05T14:00:00-06:00
+M092,Octavos,Ganador M079,Ganador M080,2026-07-05,Estadio Azteca Ciudad de México,2026-07-05T18:00:00-06:00
+M093,Octavos,Ganador M083,Ganador M084,2026-07-06,AT&T Stadium Dallas,2026-07-06T13:00:00-06:00
+M094,Octavos,Ganador M081,Ganador M082,2026-07-06,Lumen Field Seattle,2026-07-06T18:00:00-06:00
+M095,Octavos,Ganador M086,Ganador M088,2026-07-07,Mercedes-Benz Stadium Atlanta,2026-07-07T10:00:00-06:00
+M096,Octavos,Ganador M085,Ganador M087,2026-07-07,BC Place Vancouver,2026-07-07T14:00:00-06:00
+M097,Cuartos,Ganador M089,Ganador M090,2026-07-09,Gillette Stadium Boston,2026-07-09T14:00:00-06:00
+M098,Cuartos,Ganador M093,Ganador M094,2026-07-10,SoFi Stadium Los Ángeles,2026-07-10T13:00:00-06:00
+M099,Cuartos,Ganador M091,Ganador M092,2026-07-11,Hard Rock Stadium Miami,2026-07-11T15:00:00-06:00
+M100,Cuartos,Ganador M095,Ganador M096,2026-07-11,Arrowhead Stadium Kansas City,2026-07-11T19:00:00-06:00
+M101,Semifinales,Ganador M097,Ganador M098,2026-07-14,AT&T Stadium Dallas,2026-07-14T13:00:00-06:00
+M102,Semifinales,Ganador M099,Ganador M100,2026-07-15,Mercedes-Benz Stadium Atlanta,2026-07-15T13:00:00-06:00
+M103,Tercer lugar,Perdedor M101,Perdedor M102,2026-07-18,Hard Rock Stadium Miami,2026-07-18T15:00:00-06:00
+M104,Final,Ganador M101,Ganador M102,2026-07-19,MetLife Stadium Nueva York/Nueva Jersey,2026-07-19T13:00:00-06:00

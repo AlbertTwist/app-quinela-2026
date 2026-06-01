@@ -1,12 +1,6 @@
-# Quinela Mundial 2026 · v9.1 Hotfix
+# Quinela Mundial 2026 · Posgrado IMP — v11 operación + diseño
 
-Esta versión corrige `StreamlitDuplicateElementId` agregando claves únicas (`key`) a widgets repetidos en pronósticos, resultados, descargas y administración.
-
----
-
-# Quinela Mundial 2026 · Posgrado IMP — v9 tablas por etapa + premios
-
-Versión reforzada para GitHub + Streamlit Cloud + Supabase, con diseño institucional, calendario completo de 104 partidos y dos tablas de competencia: **fase de grupos** y **eliminatorias**.
+Versión reforzada para GitHub + Streamlit Cloud + Supabase. Mantiene las dos etapas de competencia (**fase de grupos** y **eliminatorias**) y agrega mejoras operativas para administración, seguridad y respaldo.
 
 ## Archivos principales
 
@@ -15,7 +9,7 @@ app.py                         ← App principal
 matches_2026.csv               ← Calendario completo M001–M104
 requirements.txt               ← Dependencias de Streamlit Cloud, incluido Supabase
 supabase_schema.sql            ← Esquema completo para instalación nueva
-supabase_migration_v8_to_v9.sql← Migración si ya usabas v8
+supabase_migration_v8_to_v9.sql← Migración si vienes de v8
 supabase_migration_v3_to_v4.sql← Migración histórica de auditoría/índices
 tools/hash_password.py         ← Genera ADMIN_PASSWORD_HASH seguro
 data/.gitkeep                  ← Mantiene carpeta data/ para modo local
@@ -23,13 +17,20 @@ data/.gitkeep                  ← Mantiene carpeta data/ para modo local
 .gitignore                     ← Evita subir secrets y datos locales
 ```
 
-## Qué cambió en v9
+## Qué cambió en v11
 
-- La antigua tabla general se convierte en **Tablas y Premios**.
-- Ranking separado para:
-  - **Fase de grupos**: solo M001–M072.
-  - **Eliminatorias**: M073–M104 + bonus de premios especiales.
-  - **Global**: referencia acumulada de ambas etapas.
+- Cambio de contraseña desde la sesión del usuario.
+- Código opcional de invitación para registros nuevos.
+- Diagnóstico de despliegue en el panel de administración.
+- Exportación completa en ZIP: respaldo JSON, calendario, tablas y pronósticos.
+- Normalización robusta de premios especiales: acentos, mayúsculas, espacios y signos ya no afectan coincidencias simples; por ejemplo, `Mexico` y `México` se evalúan igual.
+- Limpieza de encabezados y documentación para evitar confusión entre versiones.
+
+## Funciones heredadas de v9/v10
+
+- Tabla separada para **fase de grupos**: M001–M072.
+- Tabla separada para **eliminatorias**: M073–M104 + bonus de premios especiales.
+- Tabla global acumulada como referencia.
 - Distinciones automáticas de fase de grupos:
   - Más marcadores exactos.
   - Más resultados acertados.
@@ -47,8 +48,7 @@ data/.gitkeep                  ← Mantiene carpeta data/ para modo local
   - Mejor jugador joven.
   - Premio Fair Play.
   - Caballo negro.
-- Nuevo panel admin para cargar ganadores oficiales de premios especiales.
-- Exportación CSV de pronósticos especiales.
+- Panel admin para resultados, bloqueos, premios, participantes, cobertura, auditoría y respaldos.
 
 ## Supabase
 
@@ -60,26 +60,24 @@ data/.gitkeep                  ← Mantiene carpeta data/ para modo local
 4. Copia `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY` a los Secrets de Streamlit.
 5. Reinicia/redeploy la app.
 
-### Actualización desde v8
+### Actualización desde v8/v9/v10
 
-Si ya tienes v8 funcionando, ejecuta en Supabase **solo**:
+Si ya ejecutaste la migración de v9, no necesitas otra migración para v11. Solo reemplaza archivos en GitHub.
+
+Si vienes directamente desde v8, ejecuta primero:
 
 ```text
 supabase_migration_v8_to_v9.sql
 ```
 
-Después sube/reemplaza en GitHub:
+Después sube/reemplaza:
 
 ```text
 app.py
 README_DEPLOY.md
 requirements.txt
-supabase_schema.sql
-supabase_migration_v8_to_v9.sql
 .streamlit/config.toml
 ```
-
-No hace falta borrar datos previos.
 
 ## Secrets recomendados en Streamlit Cloud
 
@@ -97,6 +95,7 @@ POINTS_EXACT = 3
 POINTS_RESULT = 1
 POINTS_SPECIAL = 5
 ENABLE_REGISTRATION = true
+REGISTRATION_INVITE_CODE = "codigo_privado_opcional"
 ```
 
 Puedes generar el hash de admin con:
@@ -140,12 +139,6 @@ Ganador M073 vs Ganador M075
 
 Cuando se definan los clasificados, actualiza `matches_2026.csv` reemplazando esos textos por los equipos reales y haz redeploy. No se requiere migración de base de datos porque todos los pronósticos, resultados y bloqueos se guardan por `match_id`.
 
-En esta versión los `kickoff_at` de eliminatorias están vacíos para evitar bloqueos automáticos con horarios dudosos. El administrador puede bloquear manualmente desde **Administración → Bloqueos manuales**. Si deseas bloqueo automático, llena `kickoff_at` en formato ISO, por ejemplo:
-
-```text
-2026-07-19T13:00:00-06:00
-```
-
 ## Ejecución local
 
 ```bash
@@ -165,5 +158,6 @@ Sin Supabase configurado, la app usará `data/quinela_data.json`. Ese modo sirve
 
 - No subas `.streamlit/secrets.toml`, `.env`, `.env.local` ni `data/quinela_data.json`.
 - Para cerrar registros cuando empiece el torneo, pon `ENABLE_REGISTRATION = false` en Secrets.
+- Para permitir registros solo por invitación, define `REGISTRATION_INVITE_CODE`.
 - Si cambia un horario, edita `matches_2026.csv`, confirma `kickoff_at` y redeploy.
-- Para eliminatorias, actualiza los placeholders cuando estén definidos los clasificados.
+- Usa **Administración → Diagnóstico** para verificar backend, calendario, registro y configuración general.

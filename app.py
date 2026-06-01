@@ -1,11 +1,12 @@
 """
 Quinela Mundial 2026 · Posgrado IMP
 =====================================
-v9 — Tablas por etapa + premios especiales:
+v11 — Producto/operación + tablas por etapa + premios especiales:
   - Rankings separados para fase de grupos y eliminatorias
   - Distinciones automáticas de fase de grupos: más exactos, más aciertos, mejor efectividad, mejor diferencia y participación
   - Pronósticos especiales de eliminatorias/torneo: campeón, Balón de Oro, Bota de Oro, Guante de Oro, Fair Play, caballo negro, etc.
   - Mantiene Supabase, auditoría, bloqueos, exports, seguridad, diseño institucional y calendario de 104 partidos
+  - v11: cambio de contraseña de usuario, código opcional de invitación, diagnóstico admin, export ZIP y normalización robusta de acentos
 """
 
 from __future__ import annotations
@@ -16,6 +17,9 @@ import json
 import os
 import re
 import tempfile
+import io
+import zipfile
+import unicodedata
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -82,6 +86,7 @@ POINTS_EXACT        = max(1, get_int_secret("POINTS_EXACT", 3))
 POINTS_RESULT       = max(0, get_int_secret("POINTS_RESULT", 1))
 POINTS_SPECIAL      = max(0, get_int_secret("POINTS_SPECIAL", 5))
 ENABLE_REGISTRATION = get_bool_secret("ENABLE_REGISTRATION", True)
+REGISTRATION_INVITE_CODE = get_secret("REGISTRATION_INVITE_CODE", "").strip()
 USERNAME_RE         = re.compile(r"^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9_. -]{3,40}$")
 
 # ──────────────────────────────────────────────────────────────
@@ -1061,7 +1066,16 @@ SPECIAL_LABELS = {c["key"]: c["label"] for c in SPECIAL_CATEGORIES}
 
 
 def _norm_answer(value: Any) -> str:
-    return re.sub(r"\s+", " ", str(value or "").strip()).casefold()
+    """Normaliza respuestas libres para premios especiales.
+
+    Evita que acentos, mayúsculas, dobles espacios o signos cambien un acierto:
+    "Mexico", "México" y " MÉXICO! " se evalúan igual.
+    """
+    s = str(value or "").strip().casefold()
+    s = unicodedata.normalize("NFKD", s)
+    s = "".join(ch for ch in s if not unicodedata.combining(ch))
+    s = re.sub(r"[^a-z0-9]+", " ", s)
+    return " ".join(s.split())
 
 
 def _team_options() -> list[str]:
@@ -1230,8 +1244,25 @@ def special_predictions_export(users, all_special_preds, special_results) -> pd.
     return pd.DataFrame(rows)
 
 
+def _csv_bytes(df: pd.DataFrame) -> bytes:
+    return df.to_csv(index=False).encode("utf-8-sig") if df is not None and not df.empty else b""
+
+
+def build_admin_zip_export(payload_json: str, tables: dict[str, pd.DataFrame]) -> bytes:
+    """Crea un ZIP operativo con respaldo JSON y CSVs principales."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("quinela_backup.json", payload_json)
+        zf.writestr("matches_2026.csv", MATCHES.to_csv(index=False))
+        for filename, df in tables.items():
+            if df is not None and not df.empty:
+                zf.writestr(filename, df.to_csv(index=False))
+    buf.seek(0)
+    return buf.getvalue()
+
+
 # ──────────────────────────────────────────────────────────────
-# COMPONENTES VISUALES v8
+# COMPONENTES VISUALES v11
 # ──────────────────────────────────────────────────────────────
 def pct_txt(num: int, den: int) -> str:
     if den <= 0:
@@ -1582,7 +1613,7 @@ st.markdown("""
     <span class="hero-pill">🎯 Quinela institucional</span>
   </div>
   <h1 class="hero-title">Quinela Mundial 2026</h1>
-  <p class="hero-subtitle">Pronostica fase de grupos y eliminatorias hasta la final.</p>
+  <p class="hero-subtitle">Pronostica fase de grupos y eliminatorias hasta la final. Para y por la comunidad.</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -1613,9 +1644,16 @@ with st.sidebar:
             else:
                 u_r = st.text_input("Nombre de usuario", placeholder="Nombre Apellido", key="reg_u")
                 p_r = st.text_input("Contraseña (mín. 8)", type="password", key="reg_p")
+                invite_ok = True
+                if REGISTRATION_INVITE_CODE:
+                    invite_code = st.text_input("Código de invitación", type="password", key="reg_invite_code")
+                    invite_ok = hmac.compare_digest(invite_code.strip(), REGISTRATION_INVITE_CODE)
                 if st.button("Crear cuenta", use_container_width=True, key="register_button"):
-                    ok, msg = register_user(u_r, p_r)
-                    (st.success if ok else st.error)(msg)
+                    if REGISTRATION_INVITE_CODE and not invite_ok:
+                        st.error("Código de invitación incorrecto.")
+                    else:
+                        ok, msg = register_user(u_r, p_r)
+                        (st.success if ok else st.error)(msg)
     else:
         current_user = st.session_state.current_user
 
@@ -1646,6 +1684,24 @@ with st.sidebar:
         if TOTAL_MATCHES > 0:
             pct = len(my_preds) / TOTAL_MATCHES
             st.progress(pct, text=f"{len(my_preds)} de {TOTAL_MATCHES} partidos pronosticados")
+
+        with st.expander("🔐 Cambiar mi contraseña"):
+            old_pw = st.text_input("Contraseña actual", type="password", key="profile_old_pw")
+            new_pw = st.text_input("Nueva contraseña", type="password", key="profile_new_pw")
+            new_pw2 = st.text_input("Confirmar nueva contraseña", type="password", key="profile_new_pw2")
+            if st.button("Actualizar contraseña", use_container_width=True, key="profile_change_pw"):
+                record = STORE.get_user(current_user)
+                if not record or not verify_password(old_pw, record.get("password_hash", "")):
+                    st.error("La contraseña actual no es correcta.")
+                elif len(new_pw) < 8:
+                    st.error("La nueva contraseña debe tener al menos 8 caracteres.")
+                elif new_pw != new_pw2:
+                    st.error("La confirmación no coincide.")
+                else:
+                    STORE.update_user_hash(current_user, make_password_hash(new_pw))
+                    STORE.append_audit(current_user, "password_changed", {"username": user_key(current_user)})
+                    invalidate_cache()
+                    st.success("Contraseña actualizada.")
 
         if st.button("Cerrar sesión", use_container_width=True, key="logout_button"):
             st.session_state.logged_in    = False
@@ -2192,8 +2248,8 @@ with tab_admin_tab:
     if st.session_state.is_admin:
         st.success("✅ Modo administrador activo")
 
-        adm_res_tab, adm_lock_tab, adm_special_tab, adm_users_tab, adm_coverage_tab, adm_audit_tab, adm_export_tab = st.tabs([
-            "Resultados", "Bloqueos manuales", "Premios especiales", "Participantes", "Cobertura", "Auditoría", "Respaldo"
+        adm_res_tab, adm_lock_tab, adm_special_tab, adm_users_tab, adm_coverage_tab, adm_audit_tab, adm_export_tab, adm_diag_tab = st.tabs([
+            "Resultados", "Bloqueos manuales", "Premios especiales", "Participantes", "Cobertura", "Auditoría", "Respaldo", "Diagnóstico"
         ])
 
         # ── Resultados ────────────────────────────────────────
@@ -2507,6 +2563,45 @@ with tab_admin_tab:
                 use_container_width=True,
                 key="dl_calendar_csv",
             )
+
+            zip_tables = {
+                "tabla_global.csv": GLOBAL_STANDINGS.drop(columns=["_ukey"], errors="ignore") if "GLOBAL_STANDINGS" in globals() else pd.DataFrame(),
+                "tabla_grupos.csv": GROUP_STANDINGS.drop(columns=["_ukey"], errors="ignore") if "GROUP_STANDINGS" in globals() else pd.DataFrame(),
+                "tabla_eliminatorias.csv": KO_STANDINGS.drop(columns=["_ukey"], errors="ignore") if "KO_STANDINGS" in globals() else pd.DataFrame(),
+                "pronosticos_detalle.csv": build_predictions_export(USERS, ALL_PREDS, RESULTS),
+                "pronosticos_especiales.csv": special_predictions_export(USERS, ALL_SPECIAL_PREDS, SPECIAL_RESULTS),
+                "participantes.csv": pd.DataFrame(USERS),
+            }
+            st.download_button(
+                "📦 Descargar paquete completo ZIP",
+                data=build_admin_zip_export(payload, zip_tables),
+                file_name=f"quinela_export_{datetime.now(APP_TZ).strftime('%Y%m%d_%H%M')}.zip",
+                mime="application/zip",
+                use_container_width=True,
+                key="dl_admin_export_zip",
+            )
+
+        # ── Diagnóstico ───────────────────────────────────────
+        with adm_diag_tab:
+            st.markdown("#### Diagnóstico de despliegue")
+            diag = pd.DataFrame([
+                {"Componente": "Backend", "Estado": STORE.name, "Detalle": "Supabase recomendado para producción"},
+                {"Componente": "Usuarios", "Estado": len(USERS), "Detalle": "Participantes registrados"},
+                {"Componente": "Calendario", "Estado": f"{TOTAL_MATCHES} partidos", "Detalle": f"{GROUP_MATCHES} grupos · {KNOCKOUT_MATCHES} eliminatorias"},
+                {"Componente": "Resultados", "Estado": f"{len(RESULTS)} / {TOTAL_MATCHES}", "Detalle": "Marcadores oficiales cargados"},
+                {"Componente": "Registro abierto", "Estado": "Sí" if ENABLE_REGISTRATION else "No", "Detalle": "Controlado por ENABLE_REGISTRATION"},
+                {"Componente": "Código invitación", "Estado": "Activo" if REGISTRATION_INVITE_CODE else "Inactivo", "Detalle": "Controlado por REGISTRATION_INVITE_CODE"},
+                {"Componente": "Admin hash", "Estado": "Activo" if ADMIN_PASSWORD_HASH else "Inactivo", "Detalle": "Preferible a ADMIN_PASSWORD en texto"},
+                {"Componente": "Zona horaria", "Estado": APP_TZ_NAME, "Detalle": "Usada para bloqueos y respaldos"},
+            ])
+            st.dataframe(diag, use_container_width=True, hide_index=True)
+            if CALENDAR_WARNINGS:
+                st.warning("⚠️ Calendario: " + " | ".join(CALENDAR_WARNINGS))
+            if isinstance(STORE, LocalStore):
+                st.error("La app está usando JSON local. Para producción configura SUPABASE_URL y SUPABASE_SERVICE_ROLE_KEY en Secrets.")
+            else:
+                st.success("Supabase activo.")
+            st.caption("Esta pestaña no expone credenciales; solo verifica si la configuración requerida está presente.")
 
         if st.button("Salir de administración", type="secondary", key="adm_logout_button"):
             st.session_state.is_admin = False

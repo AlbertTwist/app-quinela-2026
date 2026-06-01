@@ -2215,7 +2215,7 @@ Siempre se guarda el último valor confirmado.
 
 #### Premios especiales de segunda etapa
 
-Incluyen campeón, subcampeón, tercer lugar, Balón de Oro, Bota de Oro, Guante de Oro, mejor joven, Fair Play y caballo negro. Cada categoría se bloquea cuando el administrador publica el ganador oficial de esa categoría. El puntaje puede ajustarse desde administración; por defecto vale **{POINTS_SPECIAL} pts**.
+Incluyen campeón, subcampeón, tercer lugar, Balón de Oro, Bota de Oro, Guante de Oro, mejor joven, Fair Play y caballo negro. Cada categoría se bloquea cuando el administrador publica el ganador oficial de esa categoría. El puntaje; por defecto vale **{POINTS_SPECIAL} pts**.
 
 ---
 *{TOTAL_MATCHES} partidos · 2 etapas · {GROUP_MATCHES} de grupos + {KNOCKOUT_MATCHES} de eliminatorias*

@@ -37,7 +37,7 @@ except Exception:
 # CONFIGURACIÓN
 # ──────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Quinela Mundial 2026 · IMP",
+    page_title="Quiniela Mundial 2026 · IMP",
     page_icon="⚽",
     layout="wide",
     initial_sidebar_state="expanded",

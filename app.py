@@ -1610,9 +1610,9 @@ st.markdown("""
   <div class="hero-kicker">
     <span class="hero-pill">⚽ Mundial FIFA 2026</span>
     <span class="hero-pill">🏛️ Posgrado IMP</span>
-    <span class="hero-pill">🎯 Quinela institucional</span>
+    <span class="hero-pill">🎯 Quiniela institucional</span>
   </div>
-  <h1 class="hero-title">Quinela Mundial 2026</h1>
+  <h1 class="hero-title">Quiniela Mundial 2026</h1>
   <p class="hero-subtitle">Pronostica fase de grupos y eliminatorias hasta la final. Para y por la comunidad.</p>
 </div>
 """, unsafe_allow_html=True)

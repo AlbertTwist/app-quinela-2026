@@ -1,105 +1,105 @@
 match_id,group,home,away,match_date,venue,kickoff_at
-M001,A,México,Sudáfrica,2026-06-11,Estadio Azteca,2026-06-11T13:00:00-06:00
-M002,A,Corea del Sur,Chequia,2026-06-11,Estadio Akron,2026-06-11T16:00:00-06:00
-M003,B,Canadá,Bosnia y Herzegovina,2026-06-12,BMO Field Toronto,2026-06-12T10:00:00-06:00
-M004,D,Estados Unidos,Paraguay,2026-06-12,SoFi Stadium Los Ángeles,2026-06-12T13:00:00-06:00
-M005,C,Haití,Escocia,2026-06-13,Gillette Stadium Boston,2026-06-13T10:00:00-06:00
-M006,D,Australia,Turquía,2026-06-13,BC Place Vancouver,2026-06-13T13:00:00-06:00
-M007,C,Brasil,Marruecos,2026-06-13,MetLife Stadium Nueva York,2026-06-13T16:00:00-06:00
-M008,B,Qatar,Suiza,2026-06-13,Levi's Stadium San Francisco,2026-06-13T19:00:00-06:00
-M009,E,Costa de Marfil,Ecuador,2026-06-14,Lincoln Financial Field Philadelphia,2026-06-14T10:00:00-06:00
-M010,E,Alemania,Curazao,2026-06-14,NRG Stadium Houston,2026-06-14T13:00:00-06:00
-M011,F,Países Bajos,Japón,2026-06-14,AT&T Stadium Dallas,2026-06-14T16:00:00-06:00
-M012,F,Suecia,Túnez,2026-06-14,Estadio BBVA Monterrey,2026-06-14T19:00:00-06:00
-M013,H,Arabia Saudita,Uruguay,2026-06-15,Hard Rock Stadium Miami,2026-06-15T10:00:00-06:00
-M014,H,España,Cabo Verde,2026-06-15,Mercedes-Benz Stadium Atlanta,2026-06-15T13:00:00-06:00
-M015,G,Irán,Nueva Zelanda,2026-06-15,SoFi Stadium Los Ángeles,2026-06-15T16:00:00-06:00
-M016,G,Bélgica,Egipto,2026-06-15,Lumen Field Seattle,2026-06-15T19:00:00-06:00
-M017,I,Francia,Senegal,2026-06-16,MetLife Stadium Nueva York,2026-06-16T10:00:00-06:00
-M018,I,Irak,Noruega,2026-06-16,Gillette Stadium Boston,2026-06-16T13:00:00-06:00
-M019,J,Argentina,Argelia,2026-06-16,Arrowhead Stadium Kansas City,2026-06-16T16:00:00-06:00
-M020,J,Austria,Jordania,2026-06-16,Levi's Stadium San Francisco,2026-06-16T19:00:00-06:00
-M021,L,Ghana,Panamá,2026-06-17,BMO Field Toronto,2026-06-17T10:00:00-06:00
-M022,L,Inglaterra,Croacia,2026-06-17,AT&T Stadium Dallas,2026-06-17T13:00:00-06:00
-M023,K,Portugal,RD Congo,2026-06-17,NRG Stadium Houston,2026-06-17T16:00:00-06:00
-M024,K,Uzbekistán,Colombia,2026-06-17,Estadio Azteca,2026-06-17T19:00:00-06:00
-M025,A,Chequia,Sudáfrica,2026-06-18,Mercedes-Benz Stadium Atlanta,2026-06-18T10:00:00-06:00
-M026,B,Suiza,Bosnia y Herzegovina,2026-06-18,SoFi Stadium Los Ángeles,2026-06-18T13:00:00-06:00
-M027,B,Canadá,Qatar,2026-06-18,BC Place Vancouver,2026-06-18T16:00:00-06:00
-M028,A,México,Corea del Sur,2026-06-18,Estadio Akron,2026-06-18T19:00:00-06:00
-M029,C,Brasil,Haití,2026-06-19,Lincoln Financial Field Philadelphia,2026-06-19T10:00:00-06:00
-M030,C,Escocia,Marruecos,2026-06-19,Gillette Stadium Boston,2026-06-19T13:00:00-06:00
-M031,D,Turquía,Paraguay,2026-06-19,Levi's Stadium San Francisco,2026-06-19T16:00:00-06:00
-M032,D,Estados Unidos,Australia,2026-06-19,Lumen Field Seattle,2026-06-19T19:00:00-06:00
-M033,E,Alemania,Costa de Marfil,2026-06-20,BMO Field Toronto,2026-06-20T10:00:00-06:00
-M034,E,Ecuador,Curazao,2026-06-20,Arrowhead Stadium Kansas City,2026-06-20T13:00:00-06:00
-M035,F,Países Bajos,Suecia,2026-06-20,NRG Stadium Houston,2026-06-20T16:00:00-06:00
-M036,F,Túnez,Japón,2026-06-20,Estadio BBVA Monterrey,2026-06-20T19:00:00-06:00
-M037,H,Uruguay,Cabo Verde,2026-06-21,Hard Rock Stadium Miami,2026-06-21T10:00:00-06:00
-M038,H,España,Arabia Saudita,2026-06-21,Mercedes-Benz Stadium Atlanta,2026-06-21T13:00:00-06:00
-M039,G,Bélgica,Irán,2026-06-21,SoFi Stadium Los Ángeles,2026-06-21T16:00:00-06:00
-M040,G,Nueva Zelanda,Egipto,2026-06-21,BC Place Vancouver,2026-06-21T19:00:00-06:00
-M041,I,Noruega,Senegal,2026-06-22,MetLife Stadium Nueva York,2026-06-22T10:00:00-06:00
-M042,I,Francia,Irak,2026-06-22,Lincoln Financial Field Philadelphia,2026-06-22T13:00:00-06:00
-M043,J,Argentina,Austria,2026-06-22,AT&T Stadium Dallas,2026-06-22T16:00:00-06:00
-M044,J,Jordania,Argelia,2026-06-22,Levi's Stadium San Francisco,2026-06-22T19:00:00-06:00
-M045,L,Inglaterra,Ghana,2026-06-23,Gillette Stadium Boston,2026-06-23T10:00:00-06:00
-M046,L,Panamá,Croacia,2026-06-23,BMO Field Toronto,2026-06-23T13:00:00-06:00
-M047,K,Portugal,Uzbekistán,2026-06-23,NRG Stadium Houston,2026-06-23T16:00:00-06:00
-M048,K,Colombia,RD Congo,2026-06-23,Estadio Akron,2026-06-23T19:00:00-06:00
-M049,C,Escocia,Brasil,2026-06-24,Hard Rock Stadium Miami,2026-06-24T14:00:00-06:00
-M050,C,Marruecos,Haití,2026-06-24,Mercedes-Benz Stadium Atlanta,2026-06-24T14:00:00-06:00
-M051,B,Suiza,Canadá,2026-06-24,BC Place Vancouver,2026-06-24T17:00:00-06:00
-M052,B,Bosnia y Herzegovina,Qatar,2026-06-24,Lumen Field Seattle,2026-06-24T17:00:00-06:00
-M053,A,Chequia,México,2026-06-24,Estadio Azteca,2026-06-24T17:00:00-06:00
-M054,A,Sudáfrica,Corea del Sur,2026-06-24,Estadio BBVA Monterrey,2026-06-24T17:00:00-06:00
-M055,E,Curazao,Costa de Marfil,2026-06-25,Lincoln Financial Field Philadelphia,2026-06-25T14:00:00-06:00
-M056,E,Ecuador,Alemania,2026-06-25,MetLife Stadium Nueva York,2026-06-25T14:00:00-06:00
-M057,F,Japón,Suecia,2026-06-25,AT&T Stadium Dallas,2026-06-25T17:00:00-06:00
-M058,F,Túnez,Países Bajos,2026-06-25,Arrowhead Stadium Kansas City,2026-06-25T17:00:00-06:00
-M059,D,Turquía,Estados Unidos,2026-06-25,SoFi Stadium Los Ángeles,2026-06-25T17:00:00-06:00
-M060,D,Paraguay,Australia,2026-06-25,Levi's Stadium San Francisco,2026-06-25T17:00:00-06:00
-M061,I,Noruega,Francia,2026-06-26,Gillette Stadium Boston,2026-06-26T14:00:00-06:00
-M062,I,Senegal,Irak,2026-06-26,BMO Field Toronto,2026-06-26T14:00:00-06:00
-M063,G,Egipto,Irán,2026-06-26,Lumen Field Seattle,2026-06-26T17:00:00-06:00
-M064,G,Nueva Zelanda,Bélgica,2026-06-26,BC Place Vancouver,2026-06-26T17:00:00-06:00
-M065,H,Cabo Verde,Arabia Saudita,2026-06-26,NRG Stadium Houston,2026-06-26T17:00:00-06:00
-M066,H,Uruguay,España,2026-06-26,Estadio Akron,2026-06-26T17:00:00-06:00
-M067,L,Panamá,Inglaterra,2026-06-27,MetLife Stadium Nueva York,2026-06-27T14:00:00-06:00
-M068,L,Croacia,Ghana,2026-06-27,Lincoln Financial Field Philadelphia,2026-06-27T14:00:00-06:00
-M069,J,Argelia,Austria,2026-06-27,Arrowhead Stadium Kansas City,2026-06-27T17:00:00-06:00
-M070,J,Jordania,Argentina,2026-06-27,AT&T Stadium Dallas,2026-06-27T17:00:00-06:00
-M071,K,Colombia,Portugal,2026-06-27,Hard Rock Stadium Miami,2026-06-27T17:00:00-06:00
-M072,K,RD Congo,Uzbekistán,2026-06-27,Mercedes-Benz Stadium Atlanta,2026-06-27T17:00:00-06:00
-M073,16avos,Subcampeón Grupo A,Subcampeón Grupo B,2026-06-28,SoFi Stadium Los Ángeles,2026-06-28T13:00:00-06:00
-M074,16avos,Ganador Grupo E,3.º Grupo A/B/C/D/F,2026-06-29,Gillette Stadium Boston,2026-06-29T14:30:00-06:00
-M075,16avos,Ganador Grupo F,Subcampeón Grupo C,2026-06-29,Estadio BBVA Monterrey,2026-06-29T19:00:00-06:00
-M076,16avos,Ganador Grupo C,Subcampeón Grupo F,2026-06-29,NRG Stadium Houston,2026-06-29T11:00:00-06:00
-M077,16avos,Ganador Grupo I,3.º Grupo C/D/F/G/H,2026-06-30,MetLife Stadium Nueva York/Nueva Jersey,2026-06-30T15:00:00-06:00
-M078,16avos,Subcampeón Grupo E,Subcampeón Grupo I,2026-06-30,AT&T Stadium Dallas,2026-06-30T11:00:00-06:00
-M079,16avos,Ganador Grupo A,3.º Grupo C/E/F/H/I,2026-06-30,Estadio Azteca Ciudad de México,2026-06-30T19:00:00-06:00
-M080,16avos,Ganador Grupo L,3.º Grupo E/H/I/J/K,2026-07-01,Mercedes-Benz Stadium Atlanta,2026-07-01T10:00:00-06:00
-M081,16avos,Ganador Grupo D,3.º Grupo B/E/F/I/J,2026-07-01,Levi’s Stadium San Francisco,2026-07-01T18:00:00-06:00
-M082,16avos,Ganador Grupo G,3.º Grupo A/E/H/I/J,2026-07-01,Lumen Field Seattle,2026-07-01T14:00:00-06:00
-M083,16avos,Subcampeón Grupo K,Subcampeón Grupo L,2026-07-02,BMO Field Toronto,2026-07-02T17:00:00-06:00
-M084,16avos,Ganador Grupo H,Subcampeón Grupo J,2026-07-02,SoFi Stadium Los Ángeles,2026-07-02T13:00:00-06:00
-M085,16avos,Ganador Grupo B,3.º Grupo E/F/G/I/J,2026-07-02,BC Place Vancouver,2026-07-02T21:00:00-06:00
-M086,16avos,Ganador Grupo J,Subcampeón Grupo H,2026-07-03,Hard Rock Stadium Miami,2026-07-03T16:00:00-06:00
-M087,16avos,Ganador Grupo K,3.º Grupo D/E/I/J/L,2026-07-03,Arrowhead Stadium Kansas City,2026-07-03T19:30:00-06:00
-M088,16avos,Subcampeón Grupo D,Subcampeón Grupo G,2026-07-03,AT&T Stadium Dallas,2026-07-03T12:00:00-06:00
-M089,Octavos,Ganador M074,Ganador M077,2026-07-04,Lincoln Financial Field Philadelphia,2026-07-04T15:00:00-06:00
-M090,Octavos,Ganador M073,Ganador M075,2026-07-04,NRG Stadium Houston,2026-07-04T11:00:00-06:00
-M091,Octavos,Ganador M076,Ganador M078,2026-07-05,MetLife Stadium Nueva York/Nueva Jersey,2026-07-05T14:00:00-06:00
-M092,Octavos,Ganador M079,Ganador M080,2026-07-05,Estadio Azteca Ciudad de México,2026-07-05T18:00:00-06:00
-M093,Octavos,Ganador M083,Ganador M084,2026-07-06,AT&T Stadium Dallas,2026-07-06T13:00:00-06:00
-M094,Octavos,Ganador M081,Ganador M082,2026-07-06,Lumen Field Seattle,2026-07-06T18:00:00-06:00
-M095,Octavos,Ganador M086,Ganador M088,2026-07-07,Mercedes-Benz Stadium Atlanta,2026-07-07T10:00:00-06:00
-M096,Octavos,Ganador M085,Ganador M087,2026-07-07,BC Place Vancouver,2026-07-07T14:00:00-06:00
-M097,Cuartos,Ganador M089,Ganador M090,2026-07-09,Gillette Stadium Boston,2026-07-09T14:00:00-06:00
-M098,Cuartos,Ganador M093,Ganador M094,2026-07-10,SoFi Stadium Los Ángeles,2026-07-10T13:00:00-06:00
-M099,Cuartos,Ganador M091,Ganador M092,2026-07-11,Hard Rock Stadium Miami,2026-07-11T15:00:00-06:00
-M100,Cuartos,Ganador M095,Ganador M096,2026-07-11,Arrowhead Stadium Kansas City,2026-07-11T19:00:00-06:00
-M101,Semifinales,Ganador M097,Ganador M098,2026-07-14,AT&T Stadium Dallas,2026-07-14T13:00:00-06:00
-M102,Semifinales,Ganador M099,Ganador M100,2026-07-15,Mercedes-Benz Stadium Atlanta,2026-07-15T13:00:00-06:00
-M103,Tercer lugar,Perdedor M101,Perdedor M102,2026-07-18,Hard Rock Stadium Miami,2026-07-18T15:00:00-06:00
-M104,Final,Ganador M101,Ganador M102,2026-07-19,MetLife Stadium Nueva York/Nueva Jersey,2026-07-19T13:00:00-06:00
+M001,A,México,Sudáfrica,11/06/2026,Estadio Azteca,2026-06-11T13:00:00-06:00
+M002,A,Corea del Sur,Chequia,11/06/2026,Estadio Akron,2026-06-11T20:00:00-06:00
+M003,B,Canadá,Bosnia y Herzegovina,12/06/2026,BMO Field Toronto,2026-06-12T13:00:00-06:00
+M004,D,Estados Unidos,Paraguay,12/06/2026,SoFi Stadium Los Ángeles,2026-06-12T19:00:00-06:00
+M005,C,Haití,Escocia,13/06/2026,Gillette Stadium Boston,2026-06-13T19:00:00-06:00
+M006,D,Australia,Turquía,13/06/2026,BC Place Vancouver,2026-06-13T22:00:00-06:00
+M007,C,Brasil,Marruecos,13/06/2026,MetLife Stadium Nueva York,2026-06-13T16:00:00-06:00
+M008,B,Qatar,Suiza,13/06/2026,Levi's Stadium San Francisco,2026-06-13T13:00:00-06:00
+M009,E,Costa de Marfil,Ecuador,14/06/2026,Lincoln Financial Field Philadelphia,2026-06-14T17:00:00-06:00
+M010,E,Alemania,Curazao,14/06/2026,NRG Stadium Houston,2026-06-14T11:00:00-06:00
+M011,F,Países Bajos,Japón,14/06/2026,AT&T Stadium Dallas,2026-06-14T14:00:00-06:00
+M012,F,Suecia,Túnez,14/06/2026,Estadio BBVA Monterrey,2026-06-14T20:00:00-06:00
+M013,H,Arabia Saudita,Uruguay,15/06/2026,Hard Rock Stadium Miami,2026-06-15T16:00:00-06:00
+M014,H,España,Cabo Verde,15/06/2026,Mercedes-Benz Stadium Atlanta,2026-06-15T10:00:00-06:00
+M015,G,Irán,Nueva Zelanda,15/06/2026,SoFi Stadium Los Ángeles,2026-06-15T19:00:00-06:00
+M016,G,Bélgica,Egipto,15/06/2026,Lumen Field Seattle,2026-06-15T13:00:00-06:00
+M017,I,Francia,Senegal,16/06/2026,MetLife Stadium Nueva York,2026-06-16T13:00:00-06:00
+M018,I,Irak,Noruega,16/06/2026,Gillette Stadium Boston,2026-06-16T16:00:00-06:00
+M019,J,Argentina,Argelia,16/06/2026,Arrowhead Stadium Kansas City,2026-06-16T19:00:00-06:00
+M020,J,Austria,Jordania,16/06/2026,Levi's Stadium San Francisco,2026-06-16T22:00:00-06:00
+M021,L,Ghana,Panamá,17/06/2026,BMO Field Toronto,2026-06-17T17:00:00-06:00
+M022,L,Inglaterra,Croacia,17/06/2026,AT&T Stadium Dallas,2026-06-17T14:00:00-06:00
+M023,K,Portugal,RD Congo,17/06/2026,NRG Stadium Houston,2026-06-17T11:00:00-06:00
+M024,K,Uzbekistán,Colombia,17/06/2026,Estadio Azteca,2026-06-17T20:00:00-06:00
+M025,A,Chequia,Sudáfrica,18/06/2026,Mercedes-Benz Stadium Atlanta,2026-06-18T10:00:00-06:00
+M026,B,Suiza,Bosnia y Herzegovina,18/06/2026,SoFi Stadium Los Ángeles,2026-06-18T13:00:00-06:00
+M027,B,Canadá,Qatar,18/06/2026,BC Place Vancouver,2026-06-18T16:00:00-06:00
+M028,A,México,Corea del Sur,18/06/2026,Estadio Akron,2026-06-18T19:00:00-06:00
+M029,C,Brasil,Haití,19/06/2026,Lincoln Financial Field Philadelphia,2026-06-19T19:00:00-06:00
+M030,C,Escocia,Marruecos,19/06/2026,Gillette Stadium Boston,2026-06-19T13:00:00-06:00
+M031,D,Turquía,Paraguay,19/06/2026,Levi's Stadium San Francisco,2026-06-19T22:00:00-06:00
+M032,D,Estados Unidos,Australia,19/06/2026,Lumen Field Seattle,2026-06-19T13:00:00-06:00
+M033,E,Alemania,Costa de Marfil,20/06/2026,BMO Field Toronto,2026-06-20T14:00:00-06:00
+M034,E,Ecuador,Curazao,20/06/2026,Arrowhead Stadium Kansas City,2026-06-20T18:00:00-06:00
+M035,F,Países Bajos,Suecia,20/06/2026,NRG Stadium Houston,2026-06-20T11:00:00-06:00
+M036,F,Túnez,Japón,20/06/2026,Estadio BBVA Monterrey,2026-06-20T22:00:00-06:00
+M037,H,Uruguay,Cabo Verde,21/06/2026,Hard Rock Stadium Miami,2026-06-21T16:00:00-06:00
+M038,H,España,Arabia Saudita,21/06/2026,Mercedes-Benz Stadium Atlanta,2026-06-21T10:00:00-06:00
+M039,G,Bélgica,Irán,21/06/2026,SoFi Stadium Los Ángeles,2026-06-21T13:00:00-06:00
+M040,G,Nueva Zelanda,Egipto,21/06/2026,BC Place Vancouver,2026-06-21T19:00:00-06:00
+M041,I,Noruega,Senegal,22/06/2026,MetLife Stadium Nueva York,2026-06-22T18:00:00-06:00
+M042,I,Francia,Irak,22/06/2026,Lincoln Financial Field Philadelphia,2026-06-22T15:00:00-06:00
+M043,J,Argentina,Austria,22/06/2026,AT&T Stadium Dallas,2026-06-22T11:00:00-06:00
+M044,J,Jordania,Argelia,22/06/2026,Levi's Stadium San Francisco,2026-06-22T21:00:00-06:00
+M045,L,Inglaterra,Ghana,23/06/2026,Gillette Stadium Boston,2026-06-23T14:00:00-06:00
+M046,L,Panamá,Croacia,23/06/2026,BMO Field Toronto,2026-06-23T17:00:00-06:00
+M047,K,Portugal,Uzbekistán,23/06/2026,NRG Stadium Houston,2026-06-23T11:00:00-06:00
+M048,K,Colombia,RD Congo,23/06/2026,Estadio Akron,2026-06-23T20:00:00-06:00
+M049,C,Escocia,Brasil,24/06/2026,Hard Rock Stadium Miami,2026-06-24T16:00:00-06:00
+M050,C,Marruecos,Haití,24/06/2026,Mercedes-Benz Stadium Atlanta,2026-06-24T16:00:00-06:00
+M051,B,Suiza,Canadá,24/06/2026,BC Place Vancouver,2026-06-24T13:00:00-06:00
+M052,B,Bosnia y Herzegovina,Qatar,24/06/2026,Lumen Field Seattle,2026-06-24T13:00:00-06:00
+M053,A,Chequia,México,24/06/2026,Estadio Azteca,2026-06-24T19:00:00-06:00
+M054,A,Sudáfrica,Corea del Sur,24/06/2026,Estadio BBVA Monterrey,2026-06-24T19:00:00-06:00
+M055,E,Curazao,Costa de Marfil,25/06/2026,Lincoln Financial Field Philadelphia,2026-06-25T14:00:00-06:00
+M056,E,Ecuador,Alemania,25/06/2026,MetLife Stadium Nueva York,2026-06-25T14:00:00-06:00
+M057,F,Japón,Suecia,25/06/2026,AT&T Stadium Dallas,2026-06-25T17:00:00-06:00
+M058,F,Túnez,Países Bajos,25/06/2026,Arrowhead Stadium Kansas City,2026-06-25T17:00:00-06:00
+M059,D,Turquía,Estados Unidos,25/06/2026,SoFi Stadium Los Ángeles,2026-06-25T20:00:00-06:00
+M060,D,Paraguay,Australia,25/06/2026,Levi's Stadium San Francisco,2026-06-25T20:00:00-06:00
+M061,I,Noruega,Francia,26/06/2026,Gillette Stadium Boston,2026-06-26T13:00:00-06:00
+M062,I,Senegal,Irak,26/06/2026,BMO Field Toronto,2026-06-26T13:00:00-06:00
+M063,G,Egipto,Irán,26/06/2026,Lumen Field Seattle,2026-06-26T21:00:00-06:00
+M064,G,Nueva Zelanda,Bélgica,26/06/2026,BC Place Vancouver,2026-06-26T21:00:00-06:00
+M065,H,Cabo Verde,Arabia Saudita,26/06/2026,NRG Stadium Houston,2026-06-26T18:00:00-06:00
+M066,H,Uruguay,España,26/06/2026,Estadio Akron,2026-06-26T18:00:00-06:00
+M067,L,Panamá,Inglaterra,27/06/2026,MetLife Stadium Nueva York,2026-06-27T15:00:00-06:00
+M068,L,Croacia,Ghana,27/06/2026,Lincoln Financial Field Philadelphia,2026-06-27T15:00:00-06:00
+M069,J,Argelia,Austria,27/06/2026,Arrowhead Stadium Kansas City,2026-06-27T20:00:00-06:00
+M070,J,Jordania,Argentina,27/06/2026,AT&T Stadium Dallas,2026-06-27T20:00:00-06:00
+M071,K,Colombia,Portugal,27/06/2026,Hard Rock Stadium Miami,2026-06-27T17:30:00-06:00
+M072,K,RD Congo,Uzbekistán,27/06/2026,Mercedes-Benz Stadium Atlanta,2026-06-27T17:30:00-06:00
+M073,16avos,Subcampeón Grupo A,Subcampeón Grupo B,28/06/2026,SoFi Stadium Los Ángeles,2026-06-28T13:00:00-06:00
+M074,16avos,Ganador Grupo E,3.º Grupo A/B/C/D/F,29/06/2026,Gillette Stadium Boston,2026-06-29T14:30:00-06:00
+M075,16avos,Ganador Grupo F,Subcampeón Grupo C,29/06/2026,Estadio BBVA Monterrey,2026-06-29T19:00:00-06:00
+M076,16avos,Ganador Grupo C,Subcampeón Grupo F,29/06/2026,NRG Stadium Houston,2026-06-29T11:00:00-06:00
+M077,16avos,Ganador Grupo I,3.º Grupo C/D/F/G/H,30/06/2026,MetLife Stadium Nueva York/Nueva Jersey,2026-06-30T15:00:00-06:00
+M078,16avos,Subcampeón Grupo E,Subcampeón Grupo I,30/06/2026,AT&T Stadium Dallas,2026-06-30T11:00:00-06:00
+M079,16avos,Ganador Grupo A,3.º Grupo C/E/F/H/I,30/06/2026,Estadio Azteca Ciudad de México,2026-06-30T19:00:00-06:00
+M080,16avos,Ganador Grupo L,3.º Grupo E/H/I/J/K,01/07/2026,Mercedes-Benz Stadium Atlanta,2026-07-01T10:00:00-06:00
+M081,16avos,Ganador Grupo D,3.º Grupo B/E/F/I/J,01/07/2026,Levi’s Stadium San Francisco,2026-07-01T18:00:00-06:00
+M082,16avos,Ganador Grupo G,3.º Grupo A/E/H/I/J,01/07/2026,Lumen Field Seattle,2026-07-01T14:00:00-06:00
+M083,16avos,Subcampeón Grupo K,Subcampeón Grupo L,02/07/2026,BMO Field Toronto,2026-07-02T17:00:00-06:00
+M084,16avos,Ganador Grupo H,Subcampeón Grupo J,02/07/2026,SoFi Stadium Los Ángeles,2026-07-02T13:00:00-06:00
+M085,16avos,Ganador Grupo B,3.º Grupo E/F/G/I/J,02/07/2026,BC Place Vancouver,2026-07-02T21:00:00-06:00
+M086,16avos,Ganador Grupo J,Subcampeón Grupo H,03/07/2026,Hard Rock Stadium Miami,2026-07-03T16:00:00-06:00
+M087,16avos,Ganador Grupo K,3.º Grupo D/E/I/J/L,03/07/2026,Arrowhead Stadium Kansas City,2026-07-03T19:30:00-06:00
+M088,16avos,Subcampeón Grupo D,Subcampeón Grupo G,03/07/2026,AT&T Stadium Dallas,2026-07-03T12:00:00-06:00
+M089,Octavos,Ganador M074,Ganador M077,04/07/2026,Lincoln Financial Field Philadelphia,2026-07-04T15:00:00-06:00
+M090,Octavos,Ganador M073,Ganador M075,04/07/2026,NRG Stadium Houston,2026-07-04T11:00:00-06:00
+M091,Octavos,Ganador M076,Ganador M078,05/07/2026,MetLife Stadium Nueva York/Nueva Jersey,2026-07-05T14:00:00-06:00
+M092,Octavos,Ganador M079,Ganador M080,05/07/2026,Estadio Azteca Ciudad de México,2026-07-05T18:00:00-06:00
+M093,Octavos,Ganador M083,Ganador M084,06/07/2026,AT&T Stadium Dallas,2026-07-06T13:00:00-06:00
+M094,Octavos,Ganador M081,Ganador M082,06/07/2026,Lumen Field Seattle,2026-07-06T18:00:00-06:00
+M095,Octavos,Ganador M086,Ganador M088,07/07/2026,Mercedes-Benz Stadium Atlanta,2026-07-07T10:00:00-06:00
+M096,Octavos,Ganador M085,Ganador M087,07/07/2026,BC Place Vancouver,2026-07-07T14:00:00-06:00
+M097,Cuartos,Ganador M089,Ganador M090,09/07/2026,Gillette Stadium Boston,2026-07-09T14:00:00-06:00
+M098,Cuartos,Ganador M093,Ganador M094,10/07/2026,SoFi Stadium Los Ángeles,2026-07-10T13:00:00-06:00
+M099,Cuartos,Ganador M091,Ganador M092,11/07/2026,Hard Rock Stadium Miami,2026-07-11T15:00:00-06:00
+M100,Cuartos,Ganador M095,Ganador M096,11/07/2026,Arrowhead Stadium Kansas City,2026-07-11T19:00:00-06:00
+M101,Semifinales,Ganador M097,Ganador M098,14/07/2026,AT&T Stadium Dallas,2026-07-14T13:00:00-06:00
+M102,Semifinales,Ganador M099,Ganador M100,15/07/2026,Mercedes-Benz Stadium Atlanta,2026-07-15T13:00:00-06:00
+M103,Tercer lugar,Perdedor M101,Perdedor M102,18/07/2026,Hard Rock Stadium Miami,2026-07-18T15:00:00-06:00
+M104,Final,Ganador M101,Ganador M102,19/07/2026,MetLife Stadium Nueva York/Nueva Jersey,2026-07-19T13:00:00-06:00

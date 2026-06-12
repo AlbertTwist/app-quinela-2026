@@ -161,3 +161,21 @@ Sin Supabase configurado, la app usará `data/quinela_data.json`. Ese modo sirve
 - Para permitir registros solo por invitación, define `REGISTRATION_INVITE_CODE`.
 - Si cambia un horario, edita `matches_2026.csv`, confirma `kickoff_at` y redeploy.
 - Usa **Administración → Diagnóstico** para verificar backend, calendario, registro y configuración general.
+
+
+## v12 · mejoras finales de estabilidad
+
+Esta versión agrega cambios pequeños pero útiles para operación en vivo:
+
+- Caché de calendario sensible a cambios de `matches_2026.csv`.
+- Corrección de CSS de tarjetas laterales.
+- Llaves únicas adicionales en formularios para evitar colisiones de widgets.
+- Secret opcional `READ_ONLY_MODE = true` para poner la app en modo consulta durante mantenimiento.
+- `runtime.txt` para fijar Python 3.12 en despliegues compatibles.
+- `.gitignore` para evitar subir secretos, respaldos o datos locales.
+
+Secret opcional nuevo:
+
+```toml
+READ_ONLY_MODE = false
+```

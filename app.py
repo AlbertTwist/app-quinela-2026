@@ -1,12 +1,13 @@
 """
 Quinela Mundial 2026 · Posgrado IMP
 =====================================
-v11 — Producto/operación + tablas por etapa + premios especiales:
+v12 — Estabilidad operativa + cierre fino de producción:
   - Rankings separados para fase de grupos y eliminatorias
   - Distinciones automáticas de fase de grupos: más exactos, más aciertos, mejor efectividad, mejor diferencia y participación
   - Pronósticos especiales de eliminatorias/torneo: campeón, Balón de Oro, Bota de Oro, Guante de Oro, Fair Play, caballo negro, etc.
   - Mantiene Supabase, auditoría, bloqueos, exports, seguridad, diseño institucional y calendario de 104 partidos
   - v11: cambio de contraseña de usuario, código opcional de invitación, diagnóstico admin, export ZIP y normalización robusta de acentos
+  - v12: caché de calendario sensible a cambios del CSV, CSS corregido, llaves únicas adicionales y modo solo lectura opcional
 """
 
 from __future__ import annotations
@@ -88,6 +89,8 @@ POINTS_SPECIAL      = max(0, get_int_secret("POINTS_SPECIAL", 5))
 ENABLE_REGISTRATION = get_bool_secret("ENABLE_REGISTRATION", True)
 REGISTRATION_INVITE_CODE = get_secret("REGISTRATION_INVITE_CODE", "").strip()
 USERNAME_RE         = re.compile(r"^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9_. -]{3,40}$")
+APP_VERSION         = "v12 · estabilidad operativa"
+READ_ONLY_MODE      = get_bool_secret("READ_ONLY_MODE", False)
 
 # ──────────────────────────────────────────────────────────────
 # CSS
@@ -150,6 +153,18 @@ section[data-testid="stSidebar"] {
   background: linear-gradient(180deg,#ffffff 0%,#f7f3ea 100%);
 }
 section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p { color:var(--tinta); }
+
+.maintenance-banner {
+  background: linear-gradient(135deg, #fff4d6, #ffffff);
+  border: 1px solid rgba(200,150,44,.38);
+  border-left: 5px solid var(--oro);
+  color: var(--tinta);
+  padding: 12px 16px;
+  border-radius: var(--radius-sm);
+  margin: 0 0 16px;
+  box-shadow: var(--sombra-soft);
+  font-weight: 700;
+}
 
 /* ── Hero banner ───────────────────────────────────────── */
 .hero-banner {
@@ -864,8 +879,16 @@ def invalidate_cache():
 # ──────────────────────────────────────────────────────────────
 # CALENDARIO
 # ──────────────────────────────────────────────────────────────
+def match_file_signature() -> tuple[int, int]:
+    """Firma simple del CSV para que Streamlit refresque caché al cambiar el calendario."""
+    try:
+        stat = MATCHES_FILE.stat()
+        return (int(stat.st_mtime_ns), int(stat.st_size))
+    except Exception:
+        return (0, 0)
+
 @st.cache_data(show_spinner=False)
-def load_matches() -> pd.DataFrame:
+def load_matches(file_signature: tuple[int, int]) -> pd.DataFrame:
     required = {"match_id", "group", "home", "away", "match_date", "venue", "kickoff_at"}
     if not MATCHES_FILE.exists():
         st.error("No existe matches_2026.csv.")
@@ -875,12 +898,15 @@ def load_matches() -> pd.DataFrame:
     if missing:
         st.error(f"matches_2026.csv faltan columnas: {', '.join(sorted(missing))}")
         return pd.DataFrame()
-    df["match_id"] = df["match_id"].astype(str)
-    df["group"]    = df["group"].astype(str)
+    df["match_id"] = df["match_id"].astype(str).str.strip()
+    df["group"]    = df["group"].astype(str).str.strip()
+    df["home"]     = df["home"].astype(str).str.strip()
+    df["away"]     = df["away"].astype(str).str.strip()
+    df["kickoff_at"] = df["kickoff_at"].astype(str).str.strip()
     return df
 
 @st.cache_data(show_spinner=False)
-def validate_matches(df: pd.DataFrame) -> list[str]:
+def validate_matches(df: pd.DataFrame, file_signature: tuple[int, int]) -> list[str]:
     warnings: list[str] = []
     if df.empty:
         return ["Calendario vacío o no cargado."]
@@ -899,7 +925,8 @@ def validate_matches(df: pd.DataFrame) -> list[str]:
                 warnings.append(f"kickoff_at inválido en {r.match_id}: {raw}")
     return warnings
 
-MATCHES          = load_matches()
+MATCHES_SIGNATURE = match_file_signature()
+MATCHES          = load_matches(MATCHES_SIGNATURE)
 RAW_BUCKETS       = sorted(MATCHES["group"].dropna().unique().tolist()) if not MATCHES.empty else []
 GROUP_ORDER       = list("ABCDEFGHIJKL")
 ROUND_ORDER       = ["16avos", "Octavos", "Cuartos", "Semifinales", "Tercer lugar", "Final"]
@@ -907,7 +934,7 @@ GROUPS            = [g for g in GROUP_ORDER if g in RAW_BUCKETS]
 KNOCKOUT_ROUNDS   = [r for r in ROUND_ORDER if r in RAW_BUCKETS]
 BUCKETS           = GROUPS + KNOCKOUT_ROUNDS
 MATCH_IDX         = {r.match_id: r for r in MATCHES.itertuples(index=False)} if not MATCHES.empty else {}
-CALENDAR_WARNINGS = validate_matches(MATCHES)
+CALENDAR_WARNINGS = validate_matches(MATCHES, MATCHES_SIGNATURE)
 TOTAL_MATCHES     = len(MATCHES)
 GROUP_MATCHES     = int(MATCHES["group"].isin(GROUPS).sum()) if not MATCHES.empty else 0
 KNOCKOUT_MATCHES  = int(MATCHES["group"].isin(KNOCKOUT_ROUNDS).sum()) if not MATCHES.empty else 0
@@ -1571,6 +1598,8 @@ def render_coverage_heatmap(all_preds: dict, n_users: int):
 # AUTENTICACIÓN
 # ──────────────────────────────────────────────────────────────
 def register_user(username: str, pw: str) -> tuple[bool, str]:
+    if READ_ONLY_MODE:
+        return False, "La app está en modo solo lectura temporalmente."
     username = normalize_username(username)
     if not username or not pw:
         return False, "Completa ambos campos."
@@ -1616,6 +1645,12 @@ st.markdown("""
   <p class="hero-subtitle">Pronostica fase de grupos y eliminatorias hasta la final. Para y por la comunidad.</p>
 </div>
 """, unsafe_allow_html=True)
+
+if READ_ONLY_MODE:
+    st.markdown(
+        '<div class="maintenance-banner">🛠️ Modo solo lectura activo: puedes consultar tablas y resultados, pero no se guardarán nuevos cambios temporalmente.</div>',
+        unsafe_allow_html=True,
+    )
 
 # ──────────────────────────────────────────────────────────────
 # SIDEBAR
@@ -1717,7 +1752,7 @@ with st.sidebar:
         "🔒 Los pronósticos se bloquean al inicio de cada partido o manualmente en eliminatorias."
     )
     sb_icon = "☁️" if isinstance(STORE, SupabaseStore) else "💾"
-    st.caption(f"{sb_icon} Base de datos: **{STORE.name}** · 🕐 Zona: **{APP_TZ_NAME}**")
+    st.caption(f"{sb_icon} Base de datos: **{STORE.name}** · 🕐 Zona: **{APP_TZ_NAME}** · **{APP_VERSION}**")
     if isinstance(STORE, LocalStore):
         st.info("Modo local activo. Configura Supabase en Secrets para producción.", icon="ℹ️")
 
@@ -1931,9 +1966,11 @@ with tab_preds:
                                 value = manual.strip() if manual.strip() else sel.strip()
                             else:
                                 value = st.text_input(cat["label"], value=existing, placeholder="Nombre del jugador / selección", key=f"sp_txt_{key}")
-                            if st.form_submit_button("Guardar", use_container_width=True):
+                            if st.form_submit_button("Guardar", use_container_width=True, key=f"sp_save_{key}"):
                                 if not value.strip():
                                     st.warning("Escribe o selecciona un pronóstico.")
+                                elif READ_ONLY_MODE:
+                                    st.error("La app está en modo solo lectura; no se guardó el pronóstico especial.")
                                 else:
                                     STORE.upsert_special_prediction(current_user, key, value)
                                     STORE.append_audit(current_user, "special_prediction_saved", {"category": key})
@@ -2058,10 +2095,12 @@ with tab_preds:
                                             value=da,
                                             key=f"pred_away_{row.match_id}",
                                         )
-                                        if st.form_submit_button("💾 Guardar", use_container_width=True):
+                                        if st.form_submit_button("💾 Guardar", use_container_width=True, key=f"save_match_{row.match_id}"):
                                             # Revalidar bloqueo al momento del submit
                                             if is_locked(row, STORE.list_locks(), STORE.list_results()):
                                                 st.error("El partido se bloqueó al enviar. No se guardó.")
+                                            elif READ_ONLY_MODE:
+                                                st.error("La app está en modo solo lectura; no se guardó el pronóstico.")
                                             else:
                                                 STORE.upsert_prediction(current_user, row.match_id, int(gh), int(ga))
                                                 invalidate_cache()
@@ -2585,11 +2624,13 @@ with tab_admin_tab:
         with adm_diag_tab:
             st.markdown("#### Diagnóstico de despliegue")
             diag = pd.DataFrame([
+                {"Componente": "Versión", "Estado": APP_VERSION, "Detalle": "Identificador visible de despliegue"},
                 {"Componente": "Backend", "Estado": STORE.name, "Detalle": "Supabase recomendado para producción"},
                 {"Componente": "Usuarios", "Estado": len(USERS), "Detalle": "Participantes registrados"},
                 {"Componente": "Calendario", "Estado": f"{TOTAL_MATCHES} partidos", "Detalle": f"{GROUP_MATCHES} grupos · {KNOCKOUT_MATCHES} eliminatorias"},
                 {"Componente": "Resultados", "Estado": f"{len(RESULTS)} / {TOTAL_MATCHES}", "Detalle": "Marcadores oficiales cargados"},
                 {"Componente": "Registro abierto", "Estado": "Sí" if ENABLE_REGISTRATION else "No", "Detalle": "Controlado por ENABLE_REGISTRATION"},
+                {"Componente": "Modo solo lectura", "Estado": "Activo" if READ_ONLY_MODE else "Inactivo", "Detalle": "Controlado por READ_ONLY_MODE"},
                 {"Componente": "Código invitación", "Estado": "Activo" if REGISTRATION_INVITE_CODE else "Inactivo", "Detalle": "Controlado por REGISTRATION_INVITE_CODE"},
                 {"Componente": "Admin hash", "Estado": "Activo" if ADMIN_PASSWORD_HASH else "Inactivo", "Detalle": "Preferible a ADMIN_PASSWORD en texto"},
                 {"Componente": "Zona horaria", "Estado": APP_TZ_NAME, "Detalle": "Usada para bloqueos y respaldos"},

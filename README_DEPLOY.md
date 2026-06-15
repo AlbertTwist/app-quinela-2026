@@ -1,6 +1,6 @@
-# Quinela Mundial 2026 · Posgrado IMP — v11 operación + diseño
+# Quinela Mundial 2026 · Posgrado IMP — v13 pronósticos públicos post-kickoff
 
-Versión reforzada para GitHub + Streamlit Cloud + Supabase. Mantiene las dos etapas de competencia (**fase de grupos** y **eliminatorias**) y agrega mejoras operativas para administración, seguridad y respaldo.
+Versión reforzada para GitHub + Streamlit Cloud + Supabase. Mantiene las dos etapas de competencia (**fase de grupos** y **eliminatorias**) y agrega una vista de pronósticos públicos que se revela solo después del kickoff.
 
 ## Archivos principales
 
@@ -179,3 +179,32 @@ Secret opcional nuevo:
 ```toml
 READ_ONLY_MODE = false
 ```
+
+## v13 · pronósticos públicos post-kickoff
+
+Esta versión agrega una nueva pestaña **👀 Pronósticos públicos**.
+
+La lógica de revelación es deliberadamente conservadora:
+
+- Antes del kickoff, los pronósticos de otros participantes permanecen ocultos.
+- Después del kickoff, se muestran las predicciones guardadas para ese partido.
+- Si el administrador ya cargó el resultado oficial, también se permite la visualización.
+- Un bloqueo manual administrativo no revela pronósticos por sí solo si todavía no llega la hora de inicio.
+
+La pestaña incluye:
+
+- filtro por etapa, grupo/ronda y búsqueda de partido;
+- conteo de predicciones por ganador local, empate y ganador visitante;
+- marcador más popular;
+- tabla de todos los participantes con su pronóstico;
+- distribución de marcadores;
+- descarga CSV de los pronósticos visibles del partido seleccionado.
+
+Secrets opcionales nuevos:
+
+```toml
+REVEAL_PREDICTIONS_AFTER_KICKOFF = true
+REQUIRE_LOGIN_FOR_PUBLIC_PREDICTIONS = true
+```
+
+`REQUIRE_LOGIN_FOR_PUBLIC_PREDICTIONS = true` es el valor recomendado para que solo participantes registrados puedan consultar las predicciones públicas.

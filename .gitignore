@@ -1,0 +1,23 @@
+# Streamlit secrets
+.streamlit/secrets.toml
+.env
+.env.local
+
+# Local data / backups
+data/
+*.db
+*.sqlite
+quinela_data.json
+*_backup_*.json
+quinela_export_*.zip
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db
+

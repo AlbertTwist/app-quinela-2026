@@ -1,13 +1,15 @@
 """
 Quinela Mundial 2026 · Posgrado IMP
 =====================================
-v12 — Estabilidad operativa + cierre fino de producción:
+v13 — Pronósticos públicos post-kickoff + estabilidad operativa:
+  - Nueva pestaña para revelar predicciones de todos solo cuando el partido ya inició o tiene resultado oficial
   - Rankings separados para fase de grupos y eliminatorias
   - Distinciones automáticas de fase de grupos: más exactos, más aciertos, mejor efectividad, mejor diferencia y participación
   - Pronósticos especiales de eliminatorias/torneo: campeón, Balón de Oro, Bota de Oro, Guante de Oro, Fair Play, caballo negro, etc.
   - Mantiene Supabase, auditoría, bloqueos, exports, seguridad, diseño institucional y calendario de 104 partidos
   - v11: cambio de contraseña de usuario, código opcional de invitación, diagnóstico admin, export ZIP y normalización robusta de acentos
   - v12: caché de calendario sensible a cambios del CSV, CSS corregido, llaves únicas adicionales y modo solo lectura opcional
+  - v13: transparencia controlada: predicciones visibles después del kickoff, nunca antes
 """
 
 from __future__ import annotations
@@ -89,8 +91,10 @@ POINTS_SPECIAL      = max(0, get_int_secret("POINTS_SPECIAL", 5))
 ENABLE_REGISTRATION = get_bool_secret("ENABLE_REGISTRATION", True)
 REGISTRATION_INVITE_CODE = get_secret("REGISTRATION_INVITE_CODE", "").strip()
 USERNAME_RE         = re.compile(r"^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9_. -]{3,40}$")
-APP_VERSION         = "v12 · estabilidad operativa"
+APP_VERSION         = "v13 · pronósticos públicos post-kickoff"
 READ_ONLY_MODE      = get_bool_secret("READ_ONLY_MODE", False)
+REVEAL_PREDICTIONS_AFTER_KICKOFF = get_bool_secret("REVEAL_PREDICTIONS_AFTER_KICKOFF", True)
+REQUIRE_LOGIN_FOR_PUBLIC_PREDICTIONS = get_bool_secret("REQUIRE_LOGIN_FOR_PUBLIC_PREDICTIONS", True)
 
 # ──────────────────────────────────────────────────────────────
 # CSS
@@ -1075,6 +1079,87 @@ def build_predictions_export(users, all_preds, results) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def has_kickoff_started(row: Any, results: dict) -> bool:
+    """Controla la revelación pública de pronósticos.
+
+    La condición deliberadamente NO usa bloqueo manual: un admin puede cerrar un partido antes
+    por operación, pero eso no debe revelar predicciones antes de la hora real de inicio.
+    Si ya hay resultado oficial, se considera revelable aunque el kickoff_at falte.
+    """
+    if row.match_id in results:
+        return True
+    ko = parse_kickoff(getattr(row, "kickoff_at", ""))
+    return bool(ko and datetime.now(APP_TZ) >= ko)
+
+
+def kickoff_status_text(row: Any, results: dict) -> str:
+    if row.match_id in results:
+        return "Resultado cargado"
+    ko = parse_kickoff(getattr(row, "kickoff_at", ""))
+    if not ko:
+        return "Hora por confirmar"
+    now = datetime.now(APP_TZ)
+    if now >= ko:
+        return "Kickoff iniciado"
+    delta = ko - now
+    days = delta.days
+    hours = delta.seconds // 3600
+    minutes = (delta.seconds % 3600) // 60
+    if days > 0:
+        return f"Disponible en {days} d {hours} h"
+    if hours > 0:
+        return f"Disponible en {hours} h {minutes} min"
+    return f"Disponible en {minutes} min"
+
+
+def prediction_outcome(ph: int, pa: int, home: str, away: str) -> str:
+    if ph > pa:
+        return f"Gana {home}"
+    if ph < pa:
+        return f"Gana {away}"
+    return "Empate"
+
+
+def public_predictions_for_match(row: Any, users, all_preds, results) -> pd.DataFrame:
+    """Devuelve las predicciones de todos para un partido ya revelado."""
+    name_by_key = {user_key(u["username"]): (u.get("display_name") or u["username"]) for u in users}
+    result = results.get(row.match_id)
+    rows = []
+    for ukey, preds in (all_preds or {}).items():
+        pred = preds.get(row.match_id)
+        if not pred:
+            continue
+        ph, pa = int(pred["home_goals"]), int(pred["away_goals"])
+        pts_val = None
+        status = "Pendiente"
+        if result:
+            rh, ra = int(result["home_goals"]), int(result["away_goals"])
+            pts_int = calc_pts(ph, pa, rh, ra)
+            pts_val = pts_int
+            status = pts_label(pts_int)
+        rows.append({
+            "Usuario": name_by_key.get(ukey, ukey),
+            "Pronóstico": f"{ph} – {pa}",
+            "Lectura": prediction_outcome(ph, pa, str(row.home), str(row.away)),
+            "Puntos": pts_val,
+            "Estado": status,
+            "Actualizado": pred.get("updated_at", ""),
+        })
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return df
+    if result:
+        return df.sort_values(["Puntos", "Usuario"], ascending=[False, True]).reset_index(drop=True)
+    return df.sort_values(["Usuario"], ascending=True).reset_index(drop=True)
+
+
+def public_prediction_distribution(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df
+    out = df.groupby(["Pronóstico", "Lectura"], dropna=False).size().reset_index(name="Participantes")
+    return out.sort_values(["Participantes", "Pronóstico"], ascending=[False, True]).reset_index(drop=True)
+
+
 # ──────────────────────────────────────────────────────────────
 # TABLAS POR ETAPA Y PREMIOS v9
 # ──────────────────────────────────────────────────────────────
@@ -1759,8 +1844,14 @@ with st.sidebar:
 # ──────────────────────────────────────────────────────────────
 # PESTAÑAS
 # ──────────────────────────────────────────────────────────────
-tab_table, tab_preds, tab_results_tab, tab_bracket_tab, tab_rules_tab, tab_admin_tab = st.tabs([
-    "🏆 Tablas y Premios", "📝 Mis Pronósticos", "📊 Resultados", "🧬 Eliminatorias", "📘 Reglamento", "⚙️ Administración"
+tab_table, tab_preds, tab_public_tab, tab_results_tab, tab_bracket_tab, tab_rules_tab, tab_admin_tab = st.tabs([
+    "🏆 Tablas y Premios",
+    "📝 Mis Pronósticos",
+    "👀 Pronósticos públicos",
+    "📊 Resultados",
+    "🧬 Eliminatorias",
+    "📘 Reglamento",
+    "⚙️ Administración",
 ])
 
 # ════════════════════════════════════════
@@ -2108,7 +2199,143 @@ with tab_preds:
                                                 st.rerun()
 
 # ════════════════════════════════════════
-# 3 · RESULTADOS  (FIX: muestra todos los partidos, con y sin resultado)
+# 3 · PRONÓSTICOS PÚBLICOS POST-KICKOFF
+# ════════════════════════════════════════
+with tab_public_tab:
+    render_section_title(
+        "Pronósticos públicos",
+        "Las predicciones de todos se revelan únicamente cuando el partido ya inició o cuando el administrador cargó el resultado oficial."
+    )
+
+    if not REVEAL_PREDICTIONS_AFTER_KICKOFF:
+        st.warning("La visualización pública de pronósticos está desactivada por configuración.")
+    elif REQUIRE_LOGIN_FOR_PUBLIC_PREDICTIONS and not st.session_state.logged_in:
+        st.warning("⚠️ Inicia sesión para consultar los pronósticos públicos post-kickoff.")
+    elif MATCHES.empty:
+        st.error("No se cargó el calendario de partidos.")
+    else:
+        revealable_count = sum(1 for r in MATCHES.itertuples(index=False) if has_kickoff_started(r, RESULTS))
+        total_pred_count = sum(len(v) for v in ALL_PREDS.values())
+        p1, p2, p3, p4 = st.columns(4)
+        render_kpi(p1, "Partidos revelables", f"{revealable_count} / {TOTAL_MATCHES}", "Kickoff iniciado o resultado cargado", "👀")
+        render_kpi(p2, "Pronósticos totales", total_pred_count, "Marcadores guardados en la quinela", "📝")
+        render_kpi(p3, "Participantes", len(USERS), "Usuarios registrados", "👥")
+        render_kpi(p4, "Política", "Post-kickoff", "No se revelan antes del inicio", "🔒")
+
+        st.info(
+            "Por transparencia, los pronósticos se vuelven visibles después del kickoff. "
+            "Un bloqueo manual administrativo no revela predicciones antes de la hora de inicio.",
+            icon="ℹ️",
+        )
+
+        pc1, pc2, pc3, pc4 = st.columns([1.1, 1.35, 2.2, 1.45])
+        pub_stage = pc1.selectbox("Etapa", ["Todas", "Grupos", "Eliminatorias"], key="pub_stage")
+        pub_bucket = pc2.selectbox("Grupo/Ronda", ["Todos"] + BUCKETS, key="pub_bucket", format_func=bucket_format)
+        pub_text = pc3.text_input("Buscar partido", placeholder="México, Brasil, M104…", key="pub_text")
+        pub_scope = pc4.selectbox("Mostrar", ["Revelables", "Todos"], key="pub_scope")
+
+        def public_match_visible(row):
+            if pub_stage == "Grupos" and not is_group_stage(row):
+                return False
+            if pub_stage == "Eliminatorias" and not is_knockout_stage(row):
+                return False
+            if pub_bucket != "Todos" and row.group != pub_bucket:
+                return False
+            if pub_text and pub_text.casefold() not in f"{row.match_id} {row.home} {row.away}".casefold():
+                return False
+            if pub_scope == "Revelables" and not has_kickoff_started(row, RESULTS):
+                return False
+            return True
+
+        public_matches = [r for r in MATCHES.itertuples(index=False) if public_match_visible(r)]
+        if not public_matches:
+            render_empty_state(
+                "🔒",
+                "Aún no hay pronósticos públicos",
+                "Cuando inicie un partido, aparecerán aquí las predicciones registradas por todos los participantes."
+            )
+        else:
+            options = list(range(len(public_matches)))
+            selected_idx = st.selectbox(
+                "Partido",
+                options,
+                format_func=lambda i: f"{public_matches[i].match_id} · {bucket_label(public_matches[i])} · {public_matches[i].home} vs {public_matches[i].away} · {kickoff_status_text(public_matches[i], RESULTS)}",
+                key="pub_match_select",
+            )
+            row = public_matches[selected_idx]
+            can_reveal = has_kickoff_started(row, RESULTS)
+
+            with st.container(border=True):
+                render_match_card_header(row, LOCKS, RESULTS)
+                if not can_reveal:
+                    st.warning(
+                        f"Pronósticos ocultos hasta el kickoff. Estado actual: {kickoff_status_text(row, RESULTS)}.",
+                        icon="🔒",
+                    )
+                else:
+                    df_public = public_predictions_for_match(row, USERS, ALL_PREDS, RESULTS)
+                    result = RESULTS.get(row.match_id)
+                    if result:
+                        st.success(
+                            f"Resultado oficial: {row.home} {result['home_goals']} – {result['away_goals']} {row.away}",
+                            icon="✅",
+                        )
+                    if df_public.empty:
+                        render_empty_state("📝", "Sin pronósticos registrados", "Ningún participante guardó marcador para este partido antes del cierre.")
+                    else:
+                        wins_home = int((df_public["Lectura"] == f"Gana {row.home}").sum())
+                        draws = int((df_public["Lectura"] == "Empate").sum())
+                        wins_away = int((df_public["Lectura"] == f"Gana {row.away}").sum())
+                        top_score = df_public["Pronóstico"].value_counts().idxmax()
+                        top_score_n = int(df_public["Pronóstico"].value_counts().max())
+
+                        q1, q2, q3, q4, q5 = st.columns(5)
+                        render_kpi(q1, "Participantes", len(df_public), "Con pronóstico visible", "👥")
+                        render_kpi(q2, f"Gana {str(row.home)[:10]}", wins_home, "Predicciones", "🏠")
+                        render_kpi(q3, "Empate", draws, "Predicciones", "➖")
+                        render_kpi(q4, f"Gana {str(row.away)[:10]}", wins_away, "Predicciones", "✈️")
+                        render_kpi(q5, "Marcador popular", top_score, f"{top_score_n} participante(s)", "🔥")
+
+                        st.markdown("#### Predicciones registradas")
+                        st.dataframe(
+                            df_public,
+                            use_container_width=True,
+                            hide_index=True,
+                            column_config={
+                                "Usuario": st.column_config.TextColumn(width="medium"),
+                                "Pronóstico": st.column_config.TextColumn(width="small"),
+                                "Puntos": st.column_config.NumberColumn(width="small"),
+                                "Actualizado": st.column_config.TextColumn(width="medium"),
+                            },
+                        )
+
+                        dist = public_prediction_distribution(df_public)
+                        if not dist.empty:
+                            with st.expander("📊 Distribución de marcadores", expanded=True):
+                                st.dataframe(
+                                    dist,
+                                    use_container_width=True,
+                                    hide_index=True,
+                                    column_config={
+                                        "Participantes": st.column_config.ProgressColumn(
+                                            "Participantes",
+                                            max_value=max(1, int(dist["Participantes"].max())),
+                                            format="%d",
+                                        ),
+                                    },
+                                )
+
+                        st.download_button(
+                            "⬇️ Descargar pronósticos visibles de este partido",
+                            data=df_public.to_csv(index=False).encode("utf-8-sig"),
+                            file_name=f"pronosticos_publicos_{row.match_id}.csv",
+                            mime="text/csv",
+                            use_container_width=True,
+                            key=f"download_public_{row.match_id}",
+                        )
+
+# ════════════════════════════════════════
+# 4 · RESULTADOS  (FIX: muestra todos los partidos, con y sin resultado)
 # ════════════════════════════════════════
 with tab_results_tab:
     render_section_title(
@@ -2631,6 +2858,8 @@ with tab_admin_tab:
                 {"Componente": "Resultados", "Estado": f"{len(RESULTS)} / {TOTAL_MATCHES}", "Detalle": "Marcadores oficiales cargados"},
                 {"Componente": "Registro abierto", "Estado": "Sí" if ENABLE_REGISTRATION else "No", "Detalle": "Controlado por ENABLE_REGISTRATION"},
                 {"Componente": "Modo solo lectura", "Estado": "Activo" if READ_ONLY_MODE else "Inactivo", "Detalle": "Controlado por READ_ONLY_MODE"},
+                {"Componente": "Pronósticos públicos", "Estado": "Activo" if REVEAL_PREDICTIONS_AFTER_KICKOFF else "Inactivo", "Detalle": "Controlado por REVEAL_PREDICTIONS_AFTER_KICKOFF"},
+                {"Componente": "Login requerido para pronósticos públicos", "Estado": "Sí" if REQUIRE_LOGIN_FOR_PUBLIC_PREDICTIONS else "No", "Detalle": "Controlado por REQUIRE_LOGIN_FOR_PUBLIC_PREDICTIONS"},
                 {"Componente": "Código invitación", "Estado": "Activo" if REGISTRATION_INVITE_CODE else "Inactivo", "Detalle": "Controlado por REGISTRATION_INVITE_CODE"},
                 {"Componente": "Admin hash", "Estado": "Activo" if ADMIN_PASSWORD_HASH else "Inactivo", "Detalle": "Preferible a ADMIN_PASSWORD en texto"},
                 {"Componente": "Zona horaria", "Estado": APP_TZ_NAME, "Detalle": "Usada para bloqueos y respaldos"},

@@ -1,7 +1,7 @@
 """
 Quinela Mundial 2026 · Posgrado IMP
 =====================================
-v13 — Pronósticos públicos post-kickoff + estabilidad operativa:
+v13.1 — Hotfix paginación Supabase + pronósticos públicos post-kickoff:
   - Nueva pestaña para revelar predicciones de todos solo cuando el partido ya inició o tiene resultado oficial
   - Rankings separados para fase de grupos y eliminatorias
   - Distinciones automáticas de fase de grupos: más exactos, más aciertos, mejor efectividad, mejor diferencia y participación
@@ -666,9 +666,35 @@ class SupabaseStore:
             raise RuntimeError("supabase no instalado. pip install supabase")
         self.client = _sb_create(url, key)
 
+    def _select_all(self, table: str, columns: str, order_by: str | None = None,
+                    desc: bool = False, page_size: int = 1000) -> list[dict]:
+        """Lee una tabla completa de Supabase paginando.
+
+        Supabase/PostgREST puede devolver solo una ventana de resultados si no se usa
+        range(). En una quiniela con muchos usuarios x 104 partidos, los pronósticos
+        superan fácilmente 1000 filas; sin paginación pueden faltar participantes en
+        vistas públicas, rankings o exportaciones.
+        """
+        rows: list[dict] = []
+        start = 0
+        while True:
+            end = start + page_size - 1
+            q = self.client.table(table).select(columns)
+            if order_by:
+                q = q.order(order_by, desc=desc)
+            chunk = q.range(start, end).execute().data or []
+            rows.extend(chunk)
+            if len(chunk) < page_size:
+                break
+            start += page_size
+        return rows
+
     def list_users(self) -> list[dict]:
-        return (self.client.table("quinela_users")
-                .select("username,display_name,password_hash,created_at").execute().data or [])
+        return self._select_all(
+            "quinela_users",
+            "username,display_name,password_hash,created_at",
+            order_by="username",
+        )
 
     def get_user(self, username: str) -> dict | None:
         rows = (self.client.table("quinela_users")
@@ -688,14 +714,22 @@ class SupabaseStore:
             "username", user_key(username)).execute()
 
     def get_predictions(self, username: str) -> dict:
-        rows = (self.client.table("quinela_predictions")
-                .select("match_id,home_goals,away_goals,updated_at")
-                .eq("username", user_key(username)).execute().data or [])
+        # Un usuario normalmente tendrá menos de 104 pronósticos, pero se pagina por
+        # consistencia y para evitar límites silenciosos si el esquema crece.
+        all_rows = self._select_all(
+            "quinela_predictions",
+            "username,match_id,home_goals,away_goals,updated_at",
+            order_by="match_id",
+        )
+        rows = [r for r in all_rows if r.get("username") == user_key(username)]
         return {r["match_id"]: r for r in rows}
 
     def list_all_predictions(self) -> dict:
-        rows = (self.client.table("quinela_predictions")
-                .select("username,match_id,home_goals,away_goals,updated_at").execute().data or [])
+        rows = self._select_all(
+            "quinela_predictions",
+            "username,match_id,home_goals,away_goals,updated_at",
+            order_by="match_id",
+        )
         out: dict = {}
         for r in rows:
             out.setdefault(r["username"], {})[r["match_id"]] = r
@@ -760,8 +794,11 @@ class SupabaseStore:
 
     def list_all_special_predictions(self) -> dict:
         try:
-            rows = (self.client.table("quinela_special_predictions")
-                    .select("username,category,value,updated_at").execute().data or [])
+            rows = self._select_all(
+                "quinela_special_predictions",
+                "username,category,value,updated_at",
+                order_by="username",
+            )
         except Exception:
             return {}
         out: dict = {}
@@ -808,6 +845,7 @@ class SupabaseStore:
 
     def list_audit(self, limit: int = 100) -> list[dict]:
         try:
+            # La auditoría sí se limita intencionalmente para no cargar demasiado.
             return (self.client.table("quinela_audit_log")
                     .select("created_at,actor,event,detail")
                     .order("created_at", desc=True)

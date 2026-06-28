@@ -1,3 +1,3 @@
 # Quinela Mundial 2026 · Posgrado IMP
 
-Versión v13: tablas por etapa, eliminatorias, premios especiales y pronósticos públicos visibles únicamente después del kickoff.
+Versión v14: etapas independientes, nuevos participantes para eliminatorias y puntuación especial por ganador, marcador exacto y penales.

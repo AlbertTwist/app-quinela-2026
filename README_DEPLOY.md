@@ -1,6 +1,6 @@
-# Quinela Mundial 2026 · Posgrado IMP — v13 pronósticos públicos post-kickoff
+# Quinela Mundial 2026 · Posgrado IMP — v14 etapas independientes
 
-Versión reforzada para GitHub + Streamlit Cloud + Supabase. Mantiene las dos etapas de competencia (**fase de grupos** y **eliminatorias**) y agrega una vista de pronósticos públicos que se revela solo después del kickoff.
+Versión reforzada para GitHub + Streamlit Cloud + Supabase. Mantiene dos etapas independientes (**fase de grupos** y **eliminatorias**), permite incorporar nuevos usuarios para la segunda etapa y agrega la puntuación especial de eliminatorias: ganador, marcador exacto y definición en penales.
 
 ## Archivos principales
 
@@ -9,13 +9,25 @@ app.py                         ← App principal
 matches_2026.csv               ← Calendario completo M001–M104
 requirements.txt               ← Dependencias de Streamlit Cloud, incluido Supabase
 supabase_schema.sql            ← Esquema completo para instalación nueva
-supabase_migration_v8_to_v9.sql← Migración si vienes de v8
+supabase_migration_v13_to_v14.sql ← Migración para ganador/penales en eliminatorias
+supabase_migration_v8_to_v9.sql  ← Migración si vienes de v8
 supabase_migration_v3_to_v4.sql← Migración histórica de auditoría/índices
 tools/hash_password.py         ← Genera ADMIN_PASSWORD_HASH seguro
 data/.gitkeep                  ← Mantiene carpeta data/ para modo local
 .streamlit/config.toml         ← Tema visual
 .gitignore                     ← Evita subir secrets y datos locales
 ```
+
+## Qué cambió en v14
+
+- La tabla de **fase de grupos** y la de **eliminatorias** son independientes.
+- Los usuarios que se incorporen para eliminatorias no aparecen con ceros en la tabla de grupos si no tuvieron actividad en esa etapa.
+- En eliminatorias, cada pronóstico incluye marcador, ganador de la llave y si se define en penales.
+- En Administración, cada resultado de eliminatoria permite indicar ganador oficial y si hubo definición por penales.
+- Puntuación de eliminatorias:
+  - Acierto de ganador: 2 puntos.
+  - Marcador exacto: +1 punto.
+  - Definición en penales: +1 punto si oficialmente se definió en penales y el usuario lo predijo.
 
 ## Qué cambió en v11
 
@@ -62,7 +74,13 @@ data/.gitkeep                  ← Mantiene carpeta data/ para modo local
 
 ### Actualización desde v8/v9/v10
 
-Si ya ejecutaste la migración de v9, no necesitas otra migración para v11. Solo reemplaza archivos en GitHub.
+Si ya estás en v13/v13.1, ejecuta esta migración antes o justo después de subir la v14:
+
+```text
+supabase_migration_v13_to_v14.sql
+```
+
+Luego reemplaza archivos en GitHub.
 
 Si vienes directamente desde v8, ejecuta primero:
 
@@ -94,6 +112,9 @@ SUPABASE_SERVICE_ROLE_KEY = "TU_SERVICE_ROLE_KEY"
 POINTS_EXACT = 3
 POINTS_RESULT = 1
 POINTS_SPECIAL = 5
+POINTS_KO_WINNER = 2
+POINTS_KO_EXACT = 1
+POINTS_KO_PENALTIES = 1
 ENABLE_REGISTRATION = true
 REGISTRATION_INVITE_CODE = "codigo_privado_opcional"
 ```
@@ -110,8 +131,11 @@ También funciona `ADMIN_PASSWORD = "..."`, pero `ADMIN_PASSWORD_HASH` es prefer
 
 | Concepto | Puntos por defecto |
 |---|---:|
-| Marcador exacto | 3 |
-| Resultado correcto | 1 |
+| Grupos: marcador exacto | 3 |
+| Grupos: resultado correcto | 1 |
+| Eliminatorias: acierto ganador | 2 |
+| Eliminatorias: marcador exacto | +1 |
+| Eliminatorias: definición en penales | +1 |
 | Fallo | 0 |
 | Premio especial acertado | 5 |
 

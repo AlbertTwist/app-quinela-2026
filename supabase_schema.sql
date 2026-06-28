@@ -13,6 +13,8 @@ create table if not exists public.quinela_predictions (
   match_id text not null,
   home_goals integer not null check (home_goals >= 0 and home_goals <= 30),
   away_goals integer not null check (away_goals >= 0 and away_goals <= 30),
+  predicted_winner text,
+  predicted_penalties boolean not null default false,
   updated_at timestamptz not null default now(),
   primary key (username, match_id)
 );
@@ -21,6 +23,8 @@ create table if not exists public.quinela_results (
   match_id text primary key,
   home_goals integer not null check (home_goals >= 0 and home_goals <= 30),
   away_goals integer not null check (away_goals >= 0 and away_goals <= 30),
+  official_winner text,
+  decided_by_penalties boolean not null default false,
   updated_at timestamptz not null default now()
 );
 
@@ -54,6 +58,8 @@ create table if not exists public.quinela_audit_log (
 );
 
 create index if not exists idx_quinela_predictions_match on public.quinela_predictions(match_id);
+create index if not exists idx_quinela_predictions_match_winner on public.quinela_predictions(match_id, predicted_winner);
+create index if not exists idx_quinela_results_official_winner on public.quinela_results(official_winner);
 create index if not exists idx_quinela_results_updated on public.quinela_results(updated_at desc);
 create index if not exists idx_quinela_special_predictions_category on public.quinela_special_predictions(category);
 create index if not exists idx_quinela_special_results_updated on public.quinela_special_results(updated_at desc);

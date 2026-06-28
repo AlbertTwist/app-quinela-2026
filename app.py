@@ -1,7 +1,7 @@
 """
 Quinela Mundial 2026 · Posgrado IMP
 =====================================
-v13.1 — Hotfix paginación Supabase + pronósticos públicos post-kickoff:
+v14 — Etapas independientes + puntuación especial de eliminatorias:
   - Nueva pestaña para revelar predicciones de todos solo cuando el partido ya inició o tiene resultado oficial
   - Rankings separados para fase de grupos y eliminatorias
   - Distinciones automáticas de fase de grupos: más exactos, más aciertos, mejor efectividad, mejor diferencia y participación
@@ -10,6 +10,7 @@ v13.1 — Hotfix paginación Supabase + pronósticos públicos post-kickoff:
   - v11: cambio de contraseña de usuario, código opcional de invitación, diagnóstico admin, export ZIP y normalización robusta de acentos
   - v12: caché de calendario sensible a cambios del CSV, CSS corregido, llaves únicas adicionales y modo solo lectura opcional
   - v13: transparencia controlada: predicciones visibles después del kickoff, nunca antes
+  - v14: usuarios/tabla por etapa y eliminatorias con ganador, marcador exacto bonus y penales
 """
 
 from __future__ import annotations
@@ -88,10 +89,15 @@ SUPABASE_KEY        = get_secret("SUPABASE_SERVICE_ROLE_KEY", "") or get_secret(
 POINTS_EXACT        = max(1, get_int_secret("POINTS_EXACT", 3))
 POINTS_RESULT       = max(0, get_int_secret("POINTS_RESULT", 1))
 POINTS_SPECIAL      = max(0, get_int_secret("POINTS_SPECIAL", 5))
+# Fase de eliminatorias: puntos independientes de grupos.
+# Regla solicitada: acierto de ganador = 2; marcador exacto = +1; definición en penales = +1.
+POINTS_KO_WINNER    = max(0, get_int_secret("POINTS_KO_WINNER", 2))
+POINTS_KO_EXACT     = max(0, get_int_secret("POINTS_KO_EXACT", 1))
+POINTS_KO_PENALTIES = max(0, get_int_secret("POINTS_KO_PENALTIES", 1))
 ENABLE_REGISTRATION = get_bool_secret("ENABLE_REGISTRATION", True)
 REGISTRATION_INVITE_CODE = get_secret("REGISTRATION_INVITE_CODE", "").strip()
 USERNAME_RE         = re.compile(r"^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9_. -]{3,40}$")
-APP_VERSION         = "v13 · pronósticos públicos post-kickoff"
+APP_VERSION         = "v14 · etapas independientes y scoring eliminatorias"
 READ_ONLY_MODE      = get_bool_secret("READ_ONLY_MODE", False)
 REVEAL_PREDICTIONS_AFTER_KICKOFF = get_bool_secret("REVEAL_PREDICTIONS_AFTER_KICKOFF", True)
 REQUIRE_LOGIN_FOR_PUBLIC_PREDICTIONS = get_bool_secret("REQUIRE_LOGIN_FOR_PUBLIC_PREDICTIONS", True)
@@ -548,11 +554,15 @@ class LocalStore:
     def list_all_predictions(self) -> dict:
         return self._load()["predictions"]
 
-    def upsert_prediction(self, username: str, match_id: str, home: int, away: int) -> None:
+    def upsert_prediction(self, username: str, match_id: str, home: int, away: int,
+                          predicted_winner: str | None = None,
+                          predicted_penalties: bool = False) -> None:
         data = self._load()
         k    = user_key(username)
         data["predictions"].setdefault(k, {})[match_id] = {
             "home_goals": int(home), "away_goals": int(away),
+            "predicted_winner": str(predicted_winner or ""),
+            "predicted_penalties": bool(predicted_penalties),
             "updated_at": datetime.now(APP_TZ).isoformat(timespec="seconds"),
         }
         self._save(data)
@@ -561,10 +571,14 @@ class LocalStore:
     def list_results(self) -> dict:
         return self._load()["results"]
 
-    def upsert_result(self, match_id: str, home: int, away: int) -> None:
+    def upsert_result(self, match_id: str, home: int, away: int,
+                      official_winner: str | None = None,
+                      decided_by_penalties: bool = False) -> None:
         data = self._load()
         data["results"][match_id] = {
             "home_goals": int(home), "away_goals": int(away),
+            "official_winner": str(official_winner or ""),
+            "decided_by_penalties": bool(decided_by_penalties),
             "updated_at": datetime.now(APP_TZ).isoformat(timespec="seconds"),
         }
         self._save(data)
@@ -584,11 +598,15 @@ class LocalStore:
         self._save(data)
 
     # ── Resultado + bloqueo atómico ──────────────────────────
-    def publish_result(self, match_id: str, home: int, away: int) -> tuple[bool, str]:
+    def publish_result(self, match_id: str, home: int, away: int,
+                       official_winner: str | None = None,
+                       decided_by_penalties: bool = False) -> tuple[bool, str]:
         try:
             data = self._load()
             data["results"][match_id] = {
                 "home_goals": int(home), "away_goals": int(away),
+                "official_winner": str(official_winner or ""),
+                "decided_by_penalties": bool(decided_by_penalties),
                 "updated_at": datetime.now(APP_TZ).isoformat(timespec="seconds"),
             }
             data["locks"][match_id] = True
@@ -713,12 +731,18 @@ class SupabaseStore:
         self.client.table("quinela_users").update({"password_hash": pw_hash}).eq(
             "username", user_key(username)).execute()
 
+    def _prediction_columns(self) -> str:
+        return "username,match_id,home_goals,away_goals,predicted_winner,predicted_penalties,updated_at"
+
+    def _result_columns(self) -> str:
+        return "match_id,home_goals,away_goals,official_winner,decided_by_penalties,updated_at"
+
     def get_predictions(self, username: str) -> dict:
         # Un usuario normalmente tendrá menos de 104 pronósticos, pero se pagina por
         # consistencia y para evitar límites silenciosos si el esquema crece.
         all_rows = self._select_all(
             "quinela_predictions",
-            "username,match_id,home_goals,away_goals,updated_at",
+            self._prediction_columns(),
             order_by="match_id",
         )
         rows = [r for r in all_rows if r.get("username") == user_key(username)]
@@ -727,7 +751,7 @@ class SupabaseStore:
     def list_all_predictions(self) -> dict:
         rows = self._select_all(
             "quinela_predictions",
-            "username,match_id,home_goals,away_goals,updated_at",
+            self._prediction_columns(),
             order_by="match_id",
         )
         out: dict = {}
@@ -735,22 +759,30 @@ class SupabaseStore:
             out.setdefault(r["username"], {})[r["match_id"]] = r
         return out
 
-    def upsert_prediction(self, username: str, match_id: str, home: int, away: int) -> None:
+    def upsert_prediction(self, username: str, match_id: str, home: int, away: int,
+                          predicted_winner: str | None = None,
+                          predicted_penalties: bool = False) -> None:
         self.client.table("quinela_predictions").upsert({
             "username":   user_key(username), "match_id": match_id,
             "home_goals": int(home), "away_goals": int(away),
+            "predicted_winner": str(predicted_winner or ""),
+            "predicted_penalties": bool(predicted_penalties),
             "updated_at": datetime.now(APP_TZ).isoformat(),
         }, on_conflict="username,match_id").execute()
 
     def list_results(self) -> dict:
         rows = (self.client.table("quinela_results")
-                .select("match_id,home_goals,away_goals,updated_at").execute().data or [])
+                .select(self._result_columns()).execute().data or [])
         return {r["match_id"]: r for r in rows}
 
-    def upsert_result(self, match_id: str, home: int, away: int) -> None:
+    def upsert_result(self, match_id: str, home: int, away: int,
+                      official_winner: str | None = None,
+                      decided_by_penalties: bool = False) -> None:
         self.client.table("quinela_results").upsert({
             "match_id":   match_id,
             "home_goals": int(home), "away_goals": int(away),
+            "official_winner": str(official_winner or ""),
+            "decided_by_penalties": bool(decided_by_penalties),
             "updated_at": datetime.now(APP_TZ).isoformat(),
         }, on_conflict="match_id").execute()
 
@@ -768,9 +800,11 @@ class SupabaseStore:
             "updated_at": datetime.now(APP_TZ).isoformat(),
         }, on_conflict="match_id").execute()
 
-    def publish_result(self, match_id: str, home: int, away: int) -> tuple[bool, str]:
+    def publish_result(self, match_id: str, home: int, away: int,
+                       official_winner: str | None = None,
+                       decided_by_penalties: bool = False) -> tuple[bool, str]:
         try:
-            self.upsert_result(match_id, home, away)
+            self.upsert_result(match_id, home, away, official_winner, decided_by_penalties)
         except Exception as exc:
             return False, f"Error al guardar resultado: {exc}"
         try:
@@ -1039,9 +1073,82 @@ def fmt_kickoff(row: Any) -> str:
     return f"{getattr(row, 'match_date', '')} · hora por confirmar"
 
 def calc_pts(ph: int, pa: int, rh: int, ra: int) -> int:
+    """Puntuación clásica para fase de grupos."""
     if ph == rh and pa == ra:
         return POINTS_EXACT
     return POINTS_RESULT if ((ph > pa) - (ph < pa)) == ((rh > ra) - (rh < ra)) else 0
+
+def infer_winner_from_score(home_goals: int, away_goals: int) -> str:
+    if int(home_goals) > int(away_goals):
+        return "home"
+    if int(home_goals) < int(away_goals):
+        return "away"
+    return ""
+
+def winner_label(value: str, home: str, away: str) -> str:
+    if value == "home":
+        return str(home)
+    if value == "away":
+        return str(away)
+    return "Sin definir"
+
+def calc_ko_details(pred: dict, result: dict) -> dict[str, Any]:
+    """Puntuación de eliminatorias.
+
+    Regla v14:
+      - Acierto de ganador: +POINTS_KO_WINNER
+      - Marcador exacto: +POINTS_KO_EXACT
+      - Definición en penales: +POINTS_KO_PENALTIES solo si oficialmente hubo penales
+        y el usuario lo predijo.
+    """
+    ph, pa = int(pred["home_goals"]), int(pred["away_goals"])
+    rh, ra = int(result["home_goals"]), int(result["away_goals"])
+    pred_winner = str(pred.get("predicted_winner") or infer_winner_from_score(ph, pa))
+    official_winner = str(result.get("official_winner") or infer_winner_from_score(rh, ra))
+    pred_pen = bool(pred.get("predicted_penalties", False))
+    official_pen = bool(result.get("decided_by_penalties", False))
+
+    exact_hit = (ph == rh and pa == ra)
+    winner_hit = bool(official_winner and pred_winner == official_winner)
+    penalties_hit = bool(official_pen and pred_pen)
+    pts = 0
+    pts += POINTS_KO_WINNER if winner_hit else 0
+    pts += POINTS_KO_EXACT if exact_hit else 0
+    pts += POINTS_KO_PENALTIES if penalties_hit else 0
+    return {
+        "points": pts,
+        "winner_hit": winner_hit,
+        "exact_hit": exact_hit,
+        "penalties_hit": penalties_hit,
+        "predicted_winner": pred_winner,
+        "official_winner": official_winner,
+        "predicted_penalties": pred_pen,
+        "decided_by_penalties": official_pen,
+    }
+
+def calc_match_details(row: Any, pred: dict, result: dict) -> dict[str, Any]:
+    ph, pa = int(pred["home_goals"]), int(pred["away_goals"])
+    rh, ra = int(result["home_goals"]), int(result["away_goals"])
+    if is_knockout_stage(row):
+        d = calc_ko_details(pred, result)
+        return {
+            "points": d["points"],
+            "exact_hit": d["exact_hit"],
+            "result_hit": d["winner_hit"],
+            "winner_hit": d["winner_hit"],
+            "penalties_hit": d["penalties_hit"],
+            "diff": abs(ph-rh)+abs(pa-ra),
+            **d,
+        }
+    pts = calc_pts(ph, pa, rh, ra)
+    return {
+        "points": pts,
+        "exact_hit": pts == POINTS_EXACT,
+        "result_hit": pts >= POINTS_RESULT and POINTS_RESULT > 0,
+        "winner_hit": pts >= POINTS_RESULT and POINTS_RESULT > 0,
+        "penalties_hit": False,
+        "diff": abs(ph-rh)+abs(pa-ra),
+    }
 
 def pts_label(pts: int) -> str:
     if pts == POINTS_EXACT:
@@ -1050,32 +1157,47 @@ def pts_label(pts: int) -> str:
         return f"✅ Resultado · +{POINTS_RESULT}"
     return "❌ Sin puntos"
 
+def ko_pts_label(details: dict) -> str:
+    parts = []
+    if details.get("winner_hit"):
+        parts.append(f"ganador +{POINTS_KO_WINNER}")
+    if details.get("exact_hit"):
+        parts.append(f"exacto +{POINTS_KO_EXACT}")
+    if details.get("penalties_hit"):
+        parts.append(f"penales +{POINTS_KO_PENALTIES}")
+    if not parts:
+        return "❌ Sin puntos"
+    return f"🏆 +{details.get('points', 0)} · " + " · ".join(parts)
+
 def build_standings(users, all_preds, results) -> pd.DataFrame:
     rows = []
     for u in users:
         ukey    = user_key(u["username"])
         display = u.get("display_name") or u["username"]
         preds   = all_preds.get(ukey, {})
-        pts = exactos = correctos = evaluados = pronosticados = dif = 0
+        pts = exactos = correctos = penales = evaluados = pronosticados = dif = 0
         for mid, pred in preds.items():
+            match = MATCH_IDX.get(mid)
+            if not match:
+                continue
             pronosticados += 1
             res = results.get(mid)
             if not res:
                 continue
             evaluados += 1
-            ph, pa = int(pred["home_goals"]), int(pred["away_goals"])
-            rh, ra = int(res["home_goals"]),  int(res["away_goals"])
-            p       = calc_pts(ph, pa, rh, ra)
-            pts      += p
-            exactos  += int(p == POINTS_EXACT)
-            correctos += int(p >= POINTS_RESULT and POINTS_RESULT > 0)
-            dif       += abs(ph - rh) + abs(pa - ra)
+            d = calc_match_details(match, pred, res)
+            pts       += int(d["points"])
+            exactos   += int(bool(d.get("exact_hit")))
+            correctos += int(bool(d.get("result_hit")))
+            penales   += int(bool(d.get("penalties_hit")))
+            dif       += int(d.get("diff", 0))
         rows.append({
-            "_ukey":         ukey,           # columna interna, se oculta en UI
+            "_ukey":         ukey,
             "Usuario":       display,
             "Puntos":        pts,
             "Exactos 🎯":   exactos,
             "Acertados ✅":  correctos,
+            "Penales 🎲":    penales,
             "Dif. marcador": dif,
             "Evaluados":     evaluados,
             "Pronosticados": pronosticados,
@@ -1085,8 +1207,8 @@ def build_standings(users, all_preds, results) -> pd.DataFrame:
     if df.empty:
         return df
     return df.sort_values(
-        ["Puntos", "Exactos 🎯", "Acertados ✅", "Dif. marcador", "Pronosticados"],
-        ascending=[False, False, False, True, False],
+        ["Puntos", "Exactos 🎯", "Acertados ✅", "Penales 🎲", "Dif. marcador", "Pronosticados"],
+        ascending=[False, False, False, False, True, False],
     ).reset_index(drop=True)
 
 def build_predictions_export(users, all_preds, results) -> pd.DataFrame:
@@ -1099,9 +1221,12 @@ def build_predictions_export(users, all_preds, results) -> pd.DataFrame:
             ph, pa     = int(pred["home_goals"]), int(pred["away_goals"])
             pts_val    = ""
             result_txt = ""
-            if res:
+            score_detail = ""
+            if res and match:
                 rh, ra     = int(res["home_goals"]), int(res["away_goals"])
-                pts_val    = calc_pts(ph, pa, rh, ra)
+                detail     = calc_match_details(match, pred, res)
+                pts_val    = int(detail["points"])
+                score_detail = ko_pts_label(detail) if is_knockout_stage(match) else pts_label(int(detail["points"]))
                 result_txt = f"{rh}-{ra}"
             rows.append({
                 "usuario":    name_by_key.get(ukey, ukey),
@@ -1110,8 +1235,13 @@ def build_predictions_export(users, all_preds, results) -> pd.DataFrame:
                 "grupo_ronda": bucket_label_from_value(str(getattr(match, "group", ""))) if match else "",
                 "partido":    f"{getattr(match, 'home', '')} vs {getattr(match, 'away', '')}",
                 "pronostico": f"{ph}-{pa}",
+                "ganador_pronosticado": winner_label(str(pred.get("predicted_winner") or infer_winner_from_score(ph, pa)), getattr(match, 'home', ''), getattr(match, 'away', '')) if match else "",
+                "penales_pronosticados": bool(pred.get("predicted_penalties", False)),
                 "resultado":  result_txt,
+                "ganador_oficial": winner_label(str(res.get("official_winner") or infer_winner_from_score(res.get('home_goals', 0), res.get('away_goals', 0))), getattr(match, 'home', ''), getattr(match, 'away', '')) if res and match else "",
+                "definido_penales": bool(res.get("decided_by_penalties", False)) if res else False,
                 "puntos":     pts_val,
+                "detalle_puntos": score_detail,
                 "actualizado": pred.get("updated_at", ""),
             })
     return pd.DataFrame(rows)
@@ -1170,19 +1300,30 @@ def public_predictions_for_match(row: Any, users, all_preds, results) -> pd.Data
         ph, pa = int(pred["home_goals"]), int(pred["away_goals"])
         pts_val = None
         status = "Pendiente"
+        lectura = prediction_outcome(ph, pa, str(row.home), str(row.away))
+        ganador_pron = ""
+        penales_pron = ""
+        if is_knockout_stage(row):
+            pred_winner = str(pred.get("predicted_winner") or infer_winner_from_score(ph, pa))
+            ganador_pron = winner_label(pred_winner, str(row.home), str(row.away))
+            penales_pron = "Sí" if bool(pred.get("predicted_penalties", False)) else "No"
+            lectura = f"Gana {ganador_pron}" if ganador_pron != "Sin definir" else lectura
         if result:
-            rh, ra = int(result["home_goals"]), int(result["away_goals"])
-            pts_int = calc_pts(ph, pa, rh, ra)
-            pts_val = pts_int
-            status = pts_label(pts_int)
-        rows.append({
+            detail = calc_match_details(row, pred, result)
+            pts_val = int(detail["points"])
+            status = ko_pts_label(detail) if is_knockout_stage(row) else pts_label(pts_val)
+        out = {
             "Usuario": name_by_key.get(ukey, ukey),
             "Pronóstico": f"{ph} – {pa}",
-            "Lectura": prediction_outcome(ph, pa, str(row.home), str(row.away)),
+            "Lectura": lectura,
             "Puntos": pts_val,
             "Estado": status,
             "Actualizado": pred.get("updated_at", ""),
-        })
+        }
+        if is_knockout_stage(row):
+            out["Ganador"] = ganador_pron
+            out["Penales"] = penales_pron
+        rows.append(out)
     df = pd.DataFrame(rows)
     if df.empty:
         return df
@@ -1256,22 +1397,24 @@ def build_stage_standings(users, all_preds, results, stage: str, include_special
         ukey    = user_key(u["username"])
         display = u.get("display_name") or u["username"]
         preds   = all_preds.get(ukey, {})
-        pts = exactos = correctos = evaluados = pronosticados = dif = 0
+        pts = exactos = correctos = penales = evaluados = pronosticados = dif = 0
         for mid, pred in preds.items():
             if mid not in mids:
+                continue
+            match = MATCH_IDX.get(mid)
+            if not match:
                 continue
             pronosticados += 1
             res = results.get(mid)
             if not res:
                 continue
             evaluados += 1
-            ph, pa = int(pred["home_goals"]), int(pred["away_goals"])
-            rh, ra = int(res["home_goals"]), int(res["away_goals"])
-            p       = calc_pts(ph, pa, rh, ra)
-            pts      += p
-            exactos  += int(p == POINTS_EXACT)
-            correctos += int(p >= POINTS_RESULT and POINTS_RESULT > 0)
-            dif       += abs(ph - rh) + abs(pa - ra)
+            detail = calc_match_details(match, pred, res)
+            pts       += int(detail["points"])
+            exactos   += int(bool(detail.get("exact_hit")))
+            correctos += int(bool(detail.get("result_hit")))
+            penales   += int(bool(detail.get("penalties_hit")))
+            dif       += int(detail.get("diff", 0))
 
         special_pts = special_hits = special_done = 0
         if include_specials:
@@ -1288,6 +1431,12 @@ def build_stage_standings(users, all_preds, results, stage: str, include_special
                     special_hits += 1
                     special_pts += int(official.get("points", POINTS_SPECIAL) or 0)
 
+        # Etapas independientes: no mostrar usuarios sin actividad en esa etapa.
+        # Esto permite incorporar nuevos participantes en eliminatorias sin contaminar
+        # la tabla de grupos con ceros.
+        if stage in {"grupos", "eliminatorias"} and pronosticados == 0 and special_done == 0:
+            continue
+
         total_pts = pts + special_pts
         rows.append({
             "_ukey": ukey,
@@ -1297,6 +1446,7 @@ def build_stage_standings(users, all_preds, results, stage: str, include_special
             "Bonus premios": special_pts,
             "Exactos 🎯": exactos,
             "Acertados ✅": correctos,
+            "Penales 🎲": penales,
             "Premios 🏅": special_hits,
             "Dif. marcador": dif,
             "Evaluados": evaluados,
@@ -1307,8 +1457,8 @@ def build_stage_standings(users, all_preds, results, stage: str, include_special
     if df.empty:
         return df
     return df.sort_values(
-        ["Puntos", "Exactos 🎯", "Acertados ✅", "Premios 🏅", "Dif. marcador", "Pronosticados"],
-        ascending=[False, False, False, False, True, False],
+        ["Puntos", "Exactos 🎯", "Acertados ✅", "Penales 🎲", "Premios 🏅", "Dif. marcador", "Pronosticados"],
+        ascending=[False, False, False, False, False, True, False],
     ).reset_index(drop=True)
 
 
@@ -2177,22 +2327,29 @@ with tab_preds:
                                     render_match_card_header(row, LOCKS, RESULTS)
 
                                     if result:
+                                        res_extra = ""
+                                        if is_knockout_stage(row):
+                                            official_w = str(result.get("official_winner") or infer_winner_from_score(result["home_goals"], result["away_goals"]))
+                                            pen_txt = " · penales" if bool(result.get("decided_by_penalties", False)) else ""
+                                            res_extra = f" · gana {winner_label(official_w, row.home, row.away)}{pen_txt}"
                                         st.markdown(
                                             f'''<div class="score-line official">
                                                 <div class="score-title">Resultado oficial</div>
-                                                <div class="score-value">{result['home_goals']} – {result['away_goals']}</div>
+                                                <div class="score-value">{result['home_goals']} – {result['away_goals']}{res_extra}</div>
                                             </div>''',
                                             unsafe_allow_html=True,
                                         )
                                     if pred:
                                         line = f"{pred['home_goals']} – {pred['away_goals']}"
+                                        if is_knockout_stage(row):
+                                            pw = str(pred.get("predicted_winner") or infer_winner_from_score(pred["home_goals"], pred["away_goals"]))
+                                            line += f" · gana {winner_label(pw, row.home, row.away)}"
+                                            if bool(pred.get("predicted_penalties", False)):
+                                                line += " · penales"
                                         extra = ""
                                         if result:
-                                            pts = calc_pts(
-                                                int(pred["home_goals"]), int(pred["away_goals"]),
-                                                int(result["home_goals"]), int(result["away_goals"]),
-                                            )
-                                            extra = f" · {pts_label(pts)}"
+                                            detail = calc_match_details(row, pred, result)
+                                            extra = f" · {ko_pts_label(detail) if is_knockout_stage(row) else pts_label(int(detail['points']))}"
                                         st.markdown(
                                             f'''<div class="score-line">
                                                 <div class="score-title">Tu pronóstico</div>
@@ -2224,6 +2381,28 @@ with tab_preds:
                                             value=da,
                                             key=f"pred_away_{row.match_id}",
                                         )
+                                        pred_winner = ""
+                                        pred_penalties = False
+                                        if is_knockout_stage(row):
+                                            st.caption(f"Eliminatorias: ganador +{POINTS_KO_WINNER}, exacto +{POINTS_KO_EXACT}, penales +{POINTS_KO_PENALTIES}.")
+                                            options = ["home", "away"]
+                                            labels = {"home": str(row.home), "away": str(row.away)}
+                                            default_w = str((pred or {}).get("predicted_winner") or infer_winner_from_score(dh, da) or "home")
+                                            if default_w not in options:
+                                                default_w = "home"
+                                            pred_winner = st.radio(
+                                                "Ganador de la llave",
+                                                options,
+                                                index=options.index(default_w),
+                                                format_func=lambda x, labels=labels: labels[x],
+                                                horizontal=True,
+                                                key=f"pred_winner_{row.match_id}",
+                                            )
+                                            pred_penalties = st.checkbox(
+                                                "Se define en penales",
+                                                value=bool((pred or {}).get("predicted_penalties", False)),
+                                                key=f"pred_penalties_{row.match_id}",
+                                            )
                                         if st.form_submit_button("💾 Guardar", use_container_width=True, key=f"save_match_{row.match_id}"):
                                             # Revalidar bloqueo al momento del submit
                                             if is_locked(row, STORE.list_locks(), STORE.list_results()):
@@ -2231,7 +2410,11 @@ with tab_preds:
                                             elif READ_ONLY_MODE:
                                                 st.error("La app está en modo solo lectura; no se guardó el pronóstico.")
                                             else:
-                                                STORE.upsert_prediction(current_user, row.match_id, int(gh), int(ga))
+                                                STORE.upsert_prediction(
+                                                    current_user, row.match_id, int(gh), int(ga),
+                                                    pred_winner if is_knockout_stage(row) else "",
+                                                    bool(pred_penalties) if is_knockout_stage(row) else False,
+                                                )
                                                 invalidate_cache()
                                                 st.success("Pronóstico guardado ✓")
                                                 st.rerun()
@@ -2403,6 +2586,12 @@ with tab_results_tab:
         res = RESULTS.get(row.match_id)
         if not res and not show_all:
             continue
+        ganador_txt = "—"
+        penales_txt = "—"
+        if res and is_knockout_stage(row):
+            ow = str(res.get("official_winner") or infer_winner_from_score(res.get("home_goals", 0), res.get("away_goals", 0)))
+            ganador_txt = winner_label(ow, row.home, row.away)
+            penales_txt = "Sí" if bool(res.get("decided_by_penalties", False)) else "No"
         rows_res.append({
             "Etapa":      stage_label_from_bucket(str(row.group)),
             "Grupo/Ronda": bucket_label(row),
@@ -2410,6 +2599,8 @@ with tab_results_tab:
             "Local":      row.home,
             "Resultado":  f"{res['home_goals']} – {res['away_goals']}" if res else "—",
             "Visitante":  row.away,
+            "Ganador llave": ganador_txt,
+            "Penales": penales_txt,
             "Sede":       row.venue,
             "Fecha":      row.match_date,
         })
@@ -2460,7 +2651,13 @@ with tab_bracket_tab:
                         row = rnd_matches[start + offset]
                         res = RESULTS.get(row.match_id)
                         with col:
-                            result_txt = f" · Resultado: {res['home_goals']}–{res['away_goals']}" if res else ""
+                            result_txt = ""
+                            if res:
+                                result_txt = f" · Resultado: {res['home_goals']}–{res['away_goals']}"
+                                ow = str(res.get("official_winner") or infer_winner_from_score(res.get("home_goals", 0), res.get("away_goals", 0)))
+                                result_txt += f" · gana {winner_label(ow, row.home, row.away)}"
+                                if bool(res.get("decided_by_penalties", False)):
+                                    result_txt += " · penales"
                             st.markdown(f"""
                             <div class="bracket-card">
                               <div class="round">{row.match_id} · {rnd}</div>
@@ -2480,10 +2677,10 @@ with tab_rules_tab:
 
     # Tarjetas de puntos con diseño del sistema
     r1, r2, r3, r4 = st.columns(4)
-    render_kpi(r1, "Marcador exacto",    POINTS_EXACT,  "Adivinaste el resultado y el marcador", "🎯")
-    render_kpi(r2, "Resultado correcto", POINTS_RESULT, "Adivinaste quién ganó (o empate)", "✅")
-    render_kpi(r3, "Premio especial",    POINTS_SPECIAL, "Valor por defecto configurable", "🏅")
-    render_kpi(r4, "Puntos máximos",     TOTAL_MATCHES * POINTS_EXACT + len(SPECIAL_CATEGORIES) * POINTS_SPECIAL, f"{GROUP_MATCHES} grupos + {KNOCKOUT_MATCHES} eliminatorias + premios", "🏆")
+    render_kpi(r1, "Grupos exacto",    POINTS_EXACT,  "Marcador exacto en fase de grupos", "🎯")
+    render_kpi(r2, "Grupos resultado", POINTS_RESULT, "Ganador o empate correcto", "✅")
+    render_kpi(r3, "Eliminatorias",    f"{POINTS_KO_WINNER}+{POINTS_KO_EXACT}+{POINTS_KO_PENALTIES}", "Ganador + exacto + penales", "🏆")
+    render_kpi(r4, "Premio especial", POINTS_SPECIAL, "Valor por defecto configurable", "🏅")
 
     st.markdown(f"""
 ---
@@ -2492,19 +2689,20 @@ with tab_rules_tab:
 | Prioridad | Criterio |
 |---:|---|
 | 1 | Mayor número de **puntos totales** |
-| 2 | Mayor número de marcadores **exactos** (+{POINTS_EXACT} pts) |
-| 3 | Mayor número de **resultados acertados** (+{POINTS_RESULT} pt) |
-| 4 | Menor suma de diferencias absolutas de goles |
-| 5 | Mayor cantidad de partidos pronosticados |
+| 2 | Mayor número de marcadores **exactos** |
+| 3 | Mayor número de **ganadores/resultados acertados** |
+| 4 | Mayor número de aciertos por **penales** en eliminatorias |
+| 5 | Menor suma de diferencias absolutas de goles |
+| 6 | Mayor cantidad de partidos pronosticados |
 
 ---
 #### Dos etapas de competencia
 
 La quinela considera **fase de grupos** y **eliminatorias**: 16avos, octavos, cuartos, semifinales, partido por tercer lugar y final.
 
-- **Tabla de fase de grupos:** solo suma M001–M072. Incluye menciones automáticas como más marcadores exactos, más aciertos, mejor efectividad y mejor diferencia acumulada.
-- **Tabla de eliminatorias:** suma M073–M104 y los **premios especiales** cuando el administrador capture los ganadores oficiales.
-- **Tabla global:** es una referencia acumulada de ambas etapas y los bonus especiales.
+- **Tabla de fase de grupos:** solo suma M001–M072 y solo muestra participantes con actividad en grupos. Incluye menciones automáticas como más marcadores exactos, más aciertos, mejor efectividad y mejor diferencia acumulada.
+- **Tabla de eliminatorias:** suma M073–M104 y solo muestra participantes con actividad en eliminatorias. Los partidos de eliminatoria puntúan: ganador **+{POINTS_KO_WINNER}**, marcador exacto **+{POINTS_KO_EXACT}** y penales **+{POINTS_KO_PENALTIES}** si oficialmente se definió por penales y el usuario lo predijo.
+- **Tabla global:** es una referencia acumulada de ambas etapas y los bonus especiales; no sustituye la premiación separada por etapa.
 
 #### Bloqueo de pronósticos
 
@@ -2591,15 +2789,47 @@ with tab_admin_tab:
                 ra = cb.number_input(f"Goles {sel.away}", min_value=0, max_value=30,
                                      value=int(existing.get("away_goals", 0)), key="adm_ra")
 
+                official_winner = ""
+                decided_by_penalties = False
+                if is_knockout_stage(sel):
+                    st.info(
+                        f"Regla eliminatorias: ganador +{POINTS_KO_WINNER}, "
+                        f"marcador exacto +{POINTS_KO_EXACT}, penales +{POINTS_KO_PENALTIES}."
+                    )
+                    opts = ["home", "away"]
+                    labels = {"home": str(sel.home), "away": str(sel.away)}
+                    old_winner = str(existing.get("official_winner") or infer_winner_from_score(rh, ra) or "home")
+                    if old_winner not in opts:
+                        old_winner = "home"
+                    official_winner = st.radio(
+                        "Ganador oficial de la llave", opts, index=opts.index(old_winner),
+                        format_func=lambda x, labels=labels: labels[x], horizontal=True,
+                        key=f"adm_official_winner_{sel.match_id}",
+                    )
+                    decided_by_penalties = st.checkbox(
+                        "El partido se definió en penales",
+                        value=bool(existing.get("decided_by_penalties", False)),
+                        key=f"adm_decided_penalties_{sel.match_id}",
+                    )
+
                 if st.button("📥 Publicar resultado", use_container_width=True, type="primary", key=f"adm_publish_result_{sel.match_id}"):
-                    ok, msg = STORE.publish_result(sel.match_id, int(rh), int(ra))
+                    ok, msg = STORE.publish_result(
+                        sel.match_id, int(rh), int(ra),
+                        official_winner if is_knockout_stage(sel) else "",
+                        bool(decided_by_penalties) if is_knockout_stage(sel) else False,
+                    )
                     if ok:
                         STORE.append_audit(
                             st.session_state.current_user or "admin", "result_published",
-                            {"match_id": sel.match_id, "home": int(rh), "away": int(ra)},
+                            {
+                                "match_id": sel.match_id, "home": int(rh), "away": int(ra),
+                                "official_winner": official_winner if is_knockout_stage(sel) else "",
+                                "decided_by_penalties": bool(decided_by_penalties) if is_knockout_stage(sel) else False,
+                            },
                         )
                         invalidate_cache()
-                        st.success(f"✅ {sel.home} **{rh}** – **{ra}** {sel.away}")
+                        extra_ok = f" · gana {winner_label(official_winner, sel.home, sel.away)}" if is_knockout_stage(sel) else ""
+                        st.success(f"✅ {sel.home} **{rh}** – **{ra}** {sel.away}{extra_ok}")
                         st.rerun()
                     else:
                         st.error(f"Error: {msg}")

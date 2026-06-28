@@ -27,9 +27,9 @@ M025,A,Chequia,Sudáfrica,18/06/2026,Mercedes-Benz Stadium Atlanta,2026-06-18T10
 M026,B,Suiza,Bosnia y Herzegovina,18/06/2026,SoFi Stadium Los Ángeles,2026-06-18T13:00:00-06:00
 M027,B,Canadá,Qatar,18/06/2026,BC Place Vancouver,2026-06-18T16:00:00-06:00
 M028,A,México,Corea del Sur,18/06/2026,Estadio Akron,2026-06-18T19:00:00-06:00
-M029,C,Brasil,Haití,19/06/2026,Lincoln Financial Field Philadelphia,2026-06-19T18:30:00-06:00
-M030,C,Escocia,Marruecos,19/06/2026,Gillette Stadium Boston,2026-06-19T16:00:00-06:00
-M031,D,Turquía,Paraguay,19/06/2026,Levi's Stadium San Francisco,2026-06-19T21:00:00-06:00
+M029,C,Brasil,Haití,19/06/2026,Lincoln Financial Field Philadelphia,2026-06-19T19:00:00-06:00
+M030,C,Escocia,Marruecos,19/06/2026,Gillette Stadium Boston,2026-06-19T13:00:00-06:00
+M031,D,Turquía,Paraguay,19/06/2026,Levi's Stadium San Francisco,2026-06-19T22:00:00-06:00
 M032,D,Estados Unidos,Australia,19/06/2026,Lumen Field Seattle,2026-06-19T13:00:00-06:00
 M033,E,Alemania,Costa de Marfil,20/06/2026,BMO Field Toronto,2026-06-20T14:00:00-06:00
 M034,E,Ecuador,Curazao,20/06/2026,Arrowhead Stadium Kansas City,2026-06-20T18:00:00-06:00
@@ -53,10 +53,10 @@ M051,B,Suiza,Canadá,24/06/2026,BC Place Vancouver,2026-06-24T13:00:00-06:00
 M052,B,Bosnia y Herzegovina,Qatar,24/06/2026,Lumen Field Seattle,2026-06-24T13:00:00-06:00
 M053,A,Chequia,México,24/06/2026,Estadio Azteca,2026-06-24T19:00:00-06:00
 M054,A,Sudáfrica,Corea del Sur,24/06/2026,Estadio BBVA Monterrey,2026-06-24T19:00:00-06:00
-M055,E,Curazao,Costa de Marfil,25/06/2026,Lincoln Financial Field Philadelphia,2026-06-25T14:09:00-06:00
-M056,E,Ecuador,Alemania,25/06/2026,MetLife Stadium Nueva York,2026-06-25T14:09:00-06:00
-M057,F,Japón,Suecia,25/06/2026,AT&T Stadium Dallas,2026-06-25T17:19:00-06:00
-M058,F,Túnez,Países Bajos,25/06/2026,Arrowhead Stadium Kansas City,2026-06-25T17:19:00-06:00
+M055,E,Curazao,Costa de Marfil,25/06/2026,Lincoln Financial Field Philadelphia,2026-06-25T14:00:00-06:00
+M056,E,Ecuador,Alemania,25/06/2026,MetLife Stadium Nueva York,2026-06-25T14:00:00-06:00
+M057,F,Japón,Suecia,25/06/2026,AT&T Stadium Dallas,2026-06-25T17:00:00-06:00
+M058,F,Túnez,Países Bajos,25/06/2026,Arrowhead Stadium Kansas City,2026-06-25T17:00:00-06:00
 M059,D,Turquía,Estados Unidos,25/06/2026,SoFi Stadium Los Ángeles,2026-06-25T20:00:00-06:00
 M060,D,Paraguay,Australia,25/06/2026,Levi's Stadium San Francisco,2026-06-25T20:00:00-06:00
 M061,I,Noruega,Francia,26/06/2026,Gillette Stadium Boston,2026-06-26T13:00:00-06:00

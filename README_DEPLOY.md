@@ -232,3 +232,8 @@ REQUIRE_LOGIN_FOR_PUBLIC_PREDICTIONS = true
 ```
 
 `REQUIRE_LOGIN_FOR_PUBLIC_PREDICTIONS = true` es el valor recomendado para que solo participantes registrados puedan consultar las predicciones públicas.
+
+
+### Nota v14.1
+
+Ya no se captura el ganador de la llave en eliminatorias. El puntaje se calcula con el marcador: +2 por ganador/lectura del marcador, +1 adicional por marcador exacto y +1 si el partido se definió en penales y el usuario lo predijo. Las columnas `predicted_winner` y `official_winner` pueden permanecer en Supabase; la app ya no las usa para la captura ni para el cálculo.

@@ -10,7 +10,7 @@ v14 — Etapas independientes + puntuación especial de eliminatorias:
   - v11: cambio de contraseña de usuario, código opcional de invitación, diagnóstico admin, export ZIP y normalización robusta de acentos
   - v12: caché de calendario sensible a cambios del CSV, CSS corregido, llaves únicas adicionales y modo solo lectura opcional
   - v13: transparencia controlada: predicciones visibles después del kickoff, nunca antes
-  - v14.1: eliminatorias sin captura manual de ganador; ganador/lectura se deriva del marcador; exacto y penales suman bonus
+  - v14.2: en eliminatorias solo si el marcador es empate se exige elegir ganador final; penales se infiere por empate
 """
 
 from __future__ import annotations
@@ -97,7 +97,7 @@ POINTS_KO_PENALTIES = max(0, get_int_secret("POINTS_KO_PENALTIES", 1))
 ENABLE_REGISTRATION = get_bool_secret("ENABLE_REGISTRATION", True)
 REGISTRATION_INVITE_CODE = get_secret("REGISTRATION_INVITE_CODE", "").strip()
 USERNAME_RE         = re.compile(r"^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9_. -]{3,40}$")
-APP_VERSION         = "v14.1 · KO sin ganador manual"
+APP_VERSION         = "v14.2 · KO empate exige ganador"
 READ_ONLY_MODE      = get_bool_secret("READ_ONLY_MODE", False)
 REVEAL_PREDICTIONS_AFTER_KICKOFF = get_bool_secret("REVEAL_PREDICTIONS_AFTER_KICKOFF", True)
 REQUIRE_LOGIN_FOR_PUBLIC_PREDICTIONS = get_bool_secret("REQUIRE_LOGIN_FOR_PUBLIC_PREDICTIONS", True)
@@ -1085,33 +1085,65 @@ def infer_winner_from_score(home_goals: int, away_goals: int) -> str:
         return "away"
     return ""
 
+def normalize_winner_side(value: Any, home: str = "", away: str = "") -> str:
+    """Normaliza ganador guardado como side ('home'/'away') o como nombre de equipo."""
+    raw = str(value or "").strip()
+    if raw in ("home", "away"):
+        return raw
+    raw_cf = raw.casefold()
+    if raw_cf and raw_cf == str(home or "").strip().casefold():
+        return "home"
+    if raw_cf and raw_cf == str(away or "").strip().casefold():
+        return "away"
+    return ""
+
 def winner_label(value: str, home: str, away: str) -> str:
-    if value == "home":
+    side = normalize_winner_side(value, home, away)
+    if side == "home":
         return str(home)
-    if value == "away":
+    if side == "away":
         return str(away)
     return "Sin definir"
 
-def calc_ko_details(pred: dict, result: dict) -> dict[str, Any]:
-    """Puntuación de eliminatorias v14.1.
+def is_draw_score(home_goals: int, away_goals: int) -> bool:
+    return int(home_goals) == int(away_goals)
 
-    Ya no se captura el ganador de la llave. La lectura base se deriva del
-    marcador pronosticado vs. el marcador oficial:
-      - Acierto ganador/lectura del marcador: +POINTS_KO_WINNER
+def ko_predicted_winner_side(row: Any, pred: dict) -> str:
+    ph, pa = int(pred["home_goals"]), int(pred["away_goals"])
+    if not is_draw_score(ph, pa):
+        return infer_winner_from_score(ph, pa)
+    return normalize_winner_side(pred.get("predicted_winner", ""), getattr(row, "home", ""), getattr(row, "away", ""))
+
+def ko_official_winner_side(row: Any, result: dict) -> str:
+    rh, ra = int(result["home_goals"]), int(result["away_goals"])
+    if not is_draw_score(rh, ra):
+        return infer_winner_from_score(rh, ra)
+    return normalize_winner_side(result.get("official_winner", ""), getattr(row, "home", ""), getattr(row, "away", ""))
+
+def calc_ko_details(row: Any, pred: dict, result: dict) -> dict[str, Any]:
+    """Puntuación de eliminatorias v14.2.
+
+    Regla operativa:
+      - Si el marcador pronosticado NO es empate, el ganador se deriva del marcador
+        y se asume que se resolvió en tiempo regular o agregado, sin penales.
+      - Si el marcador pronosticado ES empate, se exige elegir ganador final;
+        ese escenario se interpreta como definición en penales.
+
+    Puntaje:
+      - Acierto de ganador final: +POINTS_KO_WINNER
       - Marcador exacto: +POINTS_KO_EXACT
-      - Definición en penales: +POINTS_KO_PENALTIES solo si oficialmente hubo penales
-        y el usuario lo predijo.
-
-    Nota: si el marcador oficial es empate y se define en penales, la lectura base
-    se evalúa como empate del marcador oficial. La casilla de penales suma el bonus.
+      - Acierto de definición por penales: +POINTS_KO_PENALTIES
     """
     ph, pa = int(pred["home_goals"]), int(pred["away_goals"])
     rh, ra = int(result["home_goals"]), int(result["away_goals"])
-    pred_pen = bool(pred.get("predicted_penalties", False))
-    official_pen = bool(result.get("decided_by_penalties", False))
+
+    pred_pen = is_draw_score(ph, pa)
+    official_pen = is_draw_score(rh, ra)
+    pred_winner = ko_predicted_winner_side(row, pred)
+    official_winner = ko_official_winner_side(row, result)
 
     exact_hit = (ph == rh and pa == ra)
-    winner_hit = (np.sign(ph - pa) == np.sign(rh - ra))
+    winner_hit = bool(pred_winner and official_winner and pred_winner == official_winner)
     penalties_hit = bool(official_pen and pred_pen)
     pts = 0
     pts += POINTS_KO_WINNER if winner_hit else 0
@@ -1123,8 +1155,8 @@ def calc_ko_details(pred: dict, result: dict) -> dict[str, Any]:
         "result_hit": winner_hit,
         "exact_hit": exact_hit,
         "penalties_hit": penalties_hit,
-        "predicted_winner": infer_winner_from_score(ph, pa),
-        "official_winner": infer_winner_from_score(rh, ra),
+        "predicted_winner": pred_winner,
+        "official_winner": official_winner,
         "predicted_penalties": pred_pen,
         "decided_by_penalties": official_pen,
     }
@@ -1133,7 +1165,7 @@ def calc_match_details(row: Any, pred: dict, result: dict) -> dict[str, Any]:
     ph, pa = int(pred["home_goals"]), int(pred["away_goals"])
     rh, ra = int(result["home_goals"]), int(result["away_goals"])
     if is_knockout_stage(row):
-        d = calc_ko_details(pred, result)
+        d = calc_ko_details(row, pred, result)
         return {
             "points": d["points"],
             "exact_hit": d["exact_hit"],
@@ -1238,11 +1270,11 @@ def build_predictions_export(users, all_preds, results) -> pd.DataFrame:
                 "grupo_ronda": bucket_label_from_value(str(getattr(match, "group", ""))) if match else "",
                 "partido":    f"{getattr(match, 'home', '')} vs {getattr(match, 'away', '')}",
                 "pronostico": f"{ph}-{pa}",
-                "lectura_pronosticada": prediction_outcome(ph, pa, getattr(match, 'home', ''), getattr(match, 'away', '')) if match else "",
-                "penales_pronosticados": bool(pred.get("predicted_penalties", False)),
+                "lectura_pronosticada": knockout_prediction_outcome(match, pred) if match and is_knockout_stage(match) else (prediction_outcome(ph, pa, getattr(match, 'home', ''), getattr(match, 'away', '')) if match else ""),
+                "penales_pronosticados": bool(match and is_knockout_stage(match) and is_draw_score(ph, pa)),
                 "resultado":  result_txt,
-                "lectura_oficial": prediction_outcome(int(res.get('home_goals', 0)), int(res.get('away_goals', 0)), getattr(match, 'home', ''), getattr(match, 'away', '')) if res and match else "",
-                "definido_penales": bool(res.get("decided_by_penalties", False)) if res else False,
+                "lectura_oficial": knockout_result_outcome(match, res) if res and match and is_knockout_stage(match) else (prediction_outcome(int(res.get('home_goals', 0)), int(res.get('away_goals', 0)), getattr(match, 'home', ''), getattr(match, 'away', '')) if res and match else ""),
+                "definido_penales": bool(res and match and is_knockout_stage(match) and is_draw_score(int(res.get("home_goals", 0)), int(res.get("away_goals", 0)))),
                 "puntos":     pts_val,
                 "detalle_puntos": score_detail,
                 "actualizado": pred.get("updated_at", ""),
@@ -1290,6 +1322,20 @@ def prediction_outcome(ph: int, pa: int, home: str, away: str) -> str:
         return f"Gana {away}"
     return "Empate"
 
+def knockout_prediction_outcome(row: Any, pred: dict) -> str:
+    ph, pa = int(pred["home_goals"]), int(pred["away_goals"])
+    if not is_draw_score(ph, pa):
+        return f"Gana {winner_label(infer_winner_from_score(ph, pa), row.home, row.away)} · TR/TE"
+    side = ko_predicted_winner_side(row, pred)
+    return f"Empate · pasa {winner_label(side, row.home, row.away)} · penales"
+
+def knockout_result_outcome(row: Any, result: dict) -> str:
+    rh, ra = int(result["home_goals"]), int(result["away_goals"])
+    if not is_draw_score(rh, ra):
+        return f"Gana {winner_label(infer_winner_from_score(rh, ra), row.home, row.away)} · TR/TE"
+    side = ko_official_winner_side(row, result)
+    return f"Empate · avanza {winner_label(side, row.home, row.away)} · penales"
+
 
 def public_predictions_for_match(row: Any, users, all_preds, results) -> pd.DataFrame:
     """Devuelve las predicciones de todos para un partido ya revelado."""
@@ -1306,7 +1352,8 @@ def public_predictions_for_match(row: Any, users, all_preds, results) -> pd.Data
         lectura = prediction_outcome(ph, pa, str(row.home), str(row.away))
         penales_pron = ""
         if is_knockout_stage(row):
-            penales_pron = "Sí" if bool(pred.get("predicted_penalties", False)) else "No"
+            lectura = knockout_prediction_outcome(row, pred)
+            penales_pron = "Sí" if is_draw_score(ph, pa) else "No"
         if result:
             detail = calc_match_details(row, pred, result)
             pts_val = int(detail["points"])
@@ -2327,7 +2374,7 @@ with tab_preds:
                                     if result:
                                         res_extra = ""
                                         if is_knockout_stage(row):
-                                            res_extra = " · penales" if bool(result.get("decided_by_penalties", False)) else ""
+                                            res_extra = " · " + knockout_result_outcome(row, result)
                                         st.markdown(
                                             f'''<div class="score-line official">
                                                 <div class="score-title">Resultado oficial</div>
@@ -2338,8 +2385,7 @@ with tab_preds:
                                     if pred:
                                         line = f"{pred['home_goals']} – {pred['away_goals']}"
                                         if is_knockout_stage(row):
-                                            if bool(pred.get("predicted_penalties", False)):
-                                                line += " · penales"
+                                            line += " · " + knockout_prediction_outcome(row, pred)
                                         extra = ""
                                         if result:
                                             detail = calc_match_details(row, pred, result)
@@ -2357,47 +2403,73 @@ with tab_preds:
                                             st.caption("Sin pronóstico registrado antes del bloqueo.")
                                         continue
 
-                                    with st.form(key=f"pf_{row.match_id}"):
-                                        a, b = st.columns(2)
-                                        dh = int(pred["home_goals"]) if pred else 0
-                                        da = int(pred["away_goals"]) if pred else 0
-                                        gh = a.number_input(
-                                            row.home[:14],
-                                            min_value=0,
-                                            max_value=30,
-                                            value=dh,
-                                            key=f"pred_home_{row.match_id}",
-                                        )
-                                        ga = b.number_input(
-                                            row.away[:14],
-                                            min_value=0,
-                                            max_value=30,
-                                            value=da,
-                                            key=f"pred_away_{row.match_id}",
-                                        )
-                                        pred_penalties = False
-                                        if is_knockout_stage(row):
-                                            st.caption(f"Eliminatorias: ganador/lectura por marcador +{POINTS_KO_WINNER}, exacto +{POINTS_KO_EXACT}, penales +{POINTS_KO_PENALTIES}.")
-                                            pred_penalties = st.checkbox(
-                                                "Se define en penales",
-                                                value=bool((pred or {}).get("predicted_penalties", False)),
-                                                key=f"pred_penalties_{row.match_id}",
+                                    # Los controles quedan fuera de st.form para que Streamlit pueda
+                                    # mostrar dinámicamente el selector de ganador final solo cuando
+                                    # el marcador de eliminatoria está empatado.
+                                    a, b = st.columns(2)
+                                    dh = int(pred["home_goals"]) if pred else 0
+                                    da = int(pred["away_goals"]) if pred else 0
+                                    gh = a.number_input(
+                                        row.home[:14],
+                                        min_value=0,
+                                        max_value=30,
+                                        value=dh,
+                                        key=f"pred_home_{row.match_id}",
+                                    )
+                                    ga = b.number_input(
+                                        row.away[:14],
+                                        min_value=0,
+                                        max_value=30,
+                                        value=da,
+                                        key=f"pred_away_{row.match_id}",
+                                    )
+
+                                    predicted_winner_side = ""
+                                    predicted_penalties = False
+                                    if is_knockout_stage(row):
+                                        st.caption(f"Eliminatorias: ganador final +{POINTS_KO_WINNER}, exacto +{POINTS_KO_EXACT}, penales +{POINTS_KO_PENALTIES}.")
+                                        if int(gh) == int(ga):
+                                            predicted_penalties = True
+                                            existing_side = normalize_winner_side((pred or {}).get("predicted_winner", ""), row.home, row.away)
+                                            options = ["Selecciona ganador final", str(row.home), str(row.away)]
+                                            default_idx = 0
+                                            if existing_side == "home":
+                                                default_idx = 1
+                                            elif existing_side == "away":
+                                                default_idx = 2
+                                            winner_choice = st.selectbox(
+                                                "Marcador empatado: ¿quién gana la llave?",
+                                                options,
+                                                index=default_idx,
+                                                key=f"pred_final_winner_{row.match_id}",
+                                                help="Solo aparece en empate. Se interpretará como definición en penales.",
                                             )
-                                        if st.form_submit_button("💾 Guardar", use_container_width=True, key=f"save_match_{row.match_id}"):
-                                            # Revalidar bloqueo al momento del submit
-                                            if is_locked(row, STORE.list_locks(), STORE.list_results()):
-                                                st.error("El partido se bloqueó al enviar. No se guardó.")
-                                            elif READ_ONLY_MODE:
-                                                st.error("La app está en modo solo lectura; no se guardó el pronóstico.")
-                                            else:
-                                                STORE.upsert_prediction(
-                                                    current_user, row.match_id, int(gh), int(ga),
-                                                    "",
-                                                    bool(pred_penalties) if is_knockout_stage(row) else False,
-                                                )
-                                                invalidate_cache()
-                                                st.success("Pronóstico guardado ✓")
-                                                st.rerun()
+                                            predicted_winner_side = normalize_winner_side(winner_choice, row.home, row.away)
+                                            st.info("Empate en eliminatoria: se interpreta como definición en penales; elige quién avanza.", icon="🎲")
+                                        else:
+                                            predicted_winner_side = infer_winner_from_score(int(gh), int(ga))
+                                            st.caption(
+                                                f"Se asume que gana {winner_label(predicted_winner_side, row.home, row.away)} "
+                                                "en tiempo regular o agregado; sin penales."
+                                            )
+
+                                    if st.button("💾 Guardar", use_container_width=True, key=f"save_match_{row.match_id}"):
+                                        # Revalidar bloqueo al momento del submit
+                                        if is_locked(row, STORE.list_locks(), STORE.list_results()):
+                                            st.error("El partido se bloqueó al enviar. No se guardó.")
+                                        elif READ_ONLY_MODE:
+                                            st.error("La app está en modo solo lectura; no se guardó el pronóstico.")
+                                        elif is_knockout_stage(row) and int(gh) == int(ga) and not predicted_winner_side:
+                                            st.error("En eliminatorias, si pronosticas empate debes elegir quién gana la llave.")
+                                        else:
+                                            STORE.upsert_prediction(
+                                                current_user, row.match_id, int(gh), int(ga),
+                                                predicted_winner_side if is_knockout_stage(row) else "",
+                                                bool(predicted_penalties) if is_knockout_stage(row) else False,
+                                            )
+                                            invalidate_cache()
+                                            st.success("Pronóstico guardado ✓")
+                                            st.rerun()
 
 # ════════════════════════════════════════
 # 3 · PRONÓSTICOS PÚBLICOS POST-KICKOFF
@@ -2568,7 +2640,7 @@ with tab_results_tab:
             continue
         penales_txt = "—"
         if res and is_knockout_stage(row):
-            penales_txt = "Sí" if bool(res.get("decided_by_penalties", False)) else "No"
+            penales_txt = "Sí" if is_draw_score(int(res.get("home_goals", 0)), int(res.get("away_goals", 0))) else "No"
         rows_res.append({
             "Etapa":      stage_label_from_bucket(str(row.group)),
             "Grupo/Ronda": bucket_label(row),
@@ -2630,8 +2702,10 @@ with tab_bracket_tab:
                             result_txt = ""
                             if res:
                                 result_txt = f" · Resultado: {res['home_goals']}–{res['away_goals']}"
-                                if bool(res.get("decided_by_penalties", False)):
-                                    result_txt += " · penales"
+                                if is_draw_score(int(res.get("home_goals", 0)), int(res.get("away_goals", 0))):
+                                    result_txt += f" · {winner_label(ko_official_winner_side(row, res), row.home, row.away)} avanza en penales"
+                                else:
+                                    result_txt += f" · gana {winner_label(infer_winner_from_score(int(res.get('home_goals', 0)), int(res.get('away_goals', 0))), row.home, row.away)}"
                             st.markdown(f"""
                             <div class="bracket-card">
                               <div class="round">{row.match_id} · {rnd}</div>
@@ -2653,7 +2727,7 @@ with tab_rules_tab:
     r1, r2, r3, r4 = st.columns(4)
     render_kpi(r1, "Grupos exacto",    POINTS_EXACT,  "Marcador exacto en fase de grupos", "🎯")
     render_kpi(r2, "Grupos resultado", POINTS_RESULT, "Lectura correcta", "✅")
-    render_kpi(r3, "Eliminatorias",    f"{POINTS_KO_WINNER}+{POINTS_KO_EXACT}+{POINTS_KO_PENALTIES}", "Ganador/lectura + exacto + penales", "🏆")
+    render_kpi(r3, "Eliminatorias",    f"{POINTS_KO_WINNER}+{POINTS_KO_EXACT}+{POINTS_KO_PENALTIES}", "Ganador final + exacto + penales", "🏆")
     render_kpi(r4, "Premio especial", POINTS_SPECIAL, "Valor por defecto configurable", "🏅")
 
     st.markdown(f"""
@@ -2675,7 +2749,7 @@ with tab_rules_tab:
 La quinela considera **fase de grupos** y **eliminatorias**: 16avos, octavos, cuartos, semifinales, partido por tercer lugar y final.
 
 - **Tabla de fase de grupos:** solo suma M001–M072 y solo muestra participantes con actividad en grupos. Incluye menciones automáticas como más marcadores exactos, más aciertos, mejor efectividad y mejor diferencia acumulada.
-- **Tabla de eliminatorias:** suma M073–M104 y solo muestra participantes con actividad en eliminatorias. Los partidos de eliminatoria puntúan: ganador/lectura derivada del marcador **+{POINTS_KO_WINNER}**, marcador exacto **+{POINTS_KO_EXACT}** y penales **+{POINTS_KO_PENALTIES}** si oficialmente se definió por penales y el usuario lo predijo. Ya no se captura ganador por separado.
+- **Tabla de eliminatorias:** suma M073–M104 y solo muestra participantes con actividad en eliminatorias. Los partidos de eliminatoria puntúan: ganador final **+{POINTS_KO_WINNER}**, marcador exacto **+{POINTS_KO_EXACT}** y penales **+{POINTS_KO_PENALTIES}**. Si el marcador de eliminatoria queda empatado, el usuario debe elegir quién gana la llave; si no hay empate, el ganador se deriva del marcador y se asume sin penales.
 - **Tabla global:** es una referencia acumulada de ambas etapas y los bonus especiales; no sustituye la premiación separada por etapa.
 
 #### Bloqueo de pronósticos
@@ -2767,36 +2841,65 @@ with tab_admin_tab:
                 decided_by_penalties = False
                 if is_knockout_stage(sel):
                     st.info(
-                        f"Regla eliminatorias: ganador/lectura por marcador +{POINTS_KO_WINNER}, "
+                        f"Regla eliminatorias: ganador final +{POINTS_KO_WINNER}, "
                         f"marcador exacto +{POINTS_KO_EXACT}, penales +{POINTS_KO_PENALTIES}."
                     )
-                    decided_by_penalties = st.checkbox(
-                        "El partido se definió en penales",
-                        value=bool(existing.get("decided_by_penalties", False)),
-                        key=f"adm_decided_penalties_{sel.match_id}",
-                    )
+                    if int(rh) == int(ra):
+                        decided_by_penalties = True
+                        existing_side = normalize_winner_side(existing.get("official_winner", ""), sel.home, sel.away)
+                        options = ["Selecciona ganador final", str(sel.home), str(sel.away)]
+                        default_idx = 0
+                        if existing_side == "home":
+                            default_idx = 1
+                        elif existing_side == "away":
+                            default_idx = 2
+                        official_choice = st.selectbox(
+                            "Resultado empatado: ¿quién ganó la llave?",
+                            options,
+                            index=default_idx,
+                            key=f"adm_official_winner_{sel.match_id}",
+                            help="Solo se solicita si el marcador oficial quedó empatado; se interpreta como definición en penales.",
+                        )
+                        official_winner = normalize_winner_side(official_choice, sel.home, sel.away)
+                        st.warning("Empate en eliminatoria: se registrará como definición en penales. Indica quién avanzó.", icon="🎲")
+                    else:
+                        official_winner = infer_winner_from_score(int(rh), int(ra))
+                        decided_by_penalties = False
+                        st.caption(
+                            f"Se asume que ganó {winner_label(official_winner, sel.home, sel.away)} "
+                            "en tiempo regular o agregado; sin penales."
+                        )
 
                 if st.button("📥 Publicar resultado", use_container_width=True, type="primary", key=f"adm_publish_result_{sel.match_id}"):
-                    ok, msg = STORE.publish_result(
-                        sel.match_id, int(rh), int(ra),
-                        official_winner if is_knockout_stage(sel) else "",
-                        bool(decided_by_penalties) if is_knockout_stage(sel) else False,
-                    )
-                    if ok:
-                        STORE.append_audit(
-                            st.session_state.current_user or "admin", "result_published",
-                            {
-                                "match_id": sel.match_id, "home": int(rh), "away": int(ra),
-                                "official_winner": official_winner if is_knockout_stage(sel) else "",
-                                "decided_by_penalties": bool(decided_by_penalties) if is_knockout_stage(sel) else False,
-                            },
-                        )
-                        invalidate_cache()
-                        extra_ok = " · penales" if is_knockout_stage(sel) and bool(decided_by_penalties) else ""
-                        st.success(f"✅ {sel.home} **{rh}** – **{ra}** {sel.away}{extra_ok}")
-                        st.rerun()
+                    if is_knockout_stage(sel) and int(rh) == int(ra) and not official_winner:
+                        st.error("En eliminatorias, si el resultado oficial es empate debes indicar quién ganó la llave.")
                     else:
-                        st.error(f"Error: {msg}")
+                        ok, msg = STORE.publish_result(
+                            sel.match_id, int(rh), int(ra),
+                            official_winner if is_knockout_stage(sel) else "",
+                            bool(decided_by_penalties) if is_knockout_stage(sel) else False,
+                        )
+                        if ok:
+                            STORE.append_audit(
+                                st.session_state.current_user or "admin", "result_published",
+                                {
+                                    "match_id": sel.match_id, "home": int(rh), "away": int(ra),
+                                    "official_winner": official_winner if is_knockout_stage(sel) else "",
+                                    "decided_by_penalties": bool(decided_by_penalties) if is_knockout_stage(sel) else False,
+                                },
+                            )
+                            invalidate_cache()
+                            extra_ok = ""
+                            if is_knockout_stage(sel):
+                                extra_ok = " · " + knockout_result_outcome(sel, {
+                                    "home_goals": int(rh), "away_goals": int(ra),
+                                    "official_winner": official_winner,
+                                    "decided_by_penalties": bool(decided_by_penalties),
+                                })
+                            st.success(f"✅ {sel.home} **{rh}** – **{ra}** {sel.away}{extra_ok}")
+                            st.rerun()
+                        else:
+                            st.error(f"Error: {msg}")
 
                 st.divider()
                 st.markdown("#### Eliminar resultado")

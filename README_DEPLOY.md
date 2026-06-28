@@ -1,6 +1,6 @@
 # Quinela Mundial 2026 · Posgrado IMP — v14 etapas independientes
 
-Versión reforzada para GitHub + Streamlit Cloud + Supabase. Mantiene dos etapas independientes (**fase de grupos** y **eliminatorias**), permite incorporar nuevos usuarios para la segunda etapa y agrega la puntuación especial de eliminatorias: ganador, marcador exacto y definición en penales.
+Versión reforzada para GitHub + Streamlit Cloud + Supabase. Mantiene dos etapas independientes (**fase de grupos** y **eliminatorias**), permite incorporar nuevos usuarios para la segunda etapa y agrega lógica condicional de eliminatorias: si el marcador es empate se exige elegir ganador final; si no hay empate, el ganador se deriva del marcador.
 
 ## Archivos principales
 
@@ -234,6 +234,8 @@ REQUIRE_LOGIN_FOR_PUBLIC_PREDICTIONS = true
 `REQUIRE_LOGIN_FOR_PUBLIC_PREDICTIONS = true` es el valor recomendado para que solo participantes registrados puedan consultar las predicciones públicas.
 
 
-### Nota v14.1
 
-Ya no se captura el ganador de la llave en eliminatorias. El puntaje se calcula con el marcador: +2 por ganador/lectura del marcador, +1 adicional por marcador exacto y +1 si el partido se definió en penales y el usuario lo predijo. Las columnas `predicted_winner` y `official_winner` pueden permanecer en Supabase; la app ya no las usa para la captura ni para el cálculo.
+
+### Nota v14.2
+
+En eliminatorias, ya no se pide ganador final siempre. Solo se solicita cuando el marcador capturado queda empatado. En ese escenario se interpreta como definición en penales. Si el marcador no es empate, el ganador se deriva automáticamente del marcador y se asume que el partido se resolvió en tiempo regular o agregado.

@@ -90,7 +90,7 @@ POINTS_EXACT        = max(1, get_int_secret("POINTS_EXACT", 3))
 POINTS_RESULT       = max(0, get_int_secret("POINTS_RESULT", 1))
 POINTS_SPECIAL      = max(0, get_int_secret("POINTS_SPECIAL", 5))
 # Fase de eliminatorias: puntos independientes de grupos.
-# Regla solicitada KO: acierto ganador/lectura por marcador = 2; exacto = +1; penales = +1.
+# Regla KO v14.3: ganador y vía correcta = 2; ganador con vía distinta = 1; exacto = +1; penales correctos = +1.
 POINTS_KO_WINNER    = max(0, get_int_secret("POINTS_KO_WINNER", 2))
 POINTS_KO_EXACT     = max(0, get_int_secret("POINTS_KO_EXACT", 1))
 POINTS_KO_PENALTIES = max(0, get_int_secret("POINTS_KO_PENALTIES", 1))
@@ -1121,18 +1121,25 @@ def ko_official_winner_side(row: Any, result: dict) -> str:
     return normalize_winner_side(result.get("official_winner", ""), getattr(row, "home", ""), getattr(row, "away", ""))
 
 def calc_ko_details(row: Any, pred: dict, result: dict) -> dict[str, Any]:
-    """Puntuación de eliminatorias v14.2.
+    """Puntuación de eliminatorias v14.3.
 
     Regla operativa:
       - Si el marcador pronosticado NO es empate, el ganador se deriva del marcador
-        y se asume que se resolvió en tiempo regular o agregado, sin penales.
+        y se asume que se resolvió en tiempo regular o agregado.
       - Si el marcador pronosticado ES empate, se exige elegir ganador final;
         ese escenario se interpreta como definición en penales.
+      - La misma lógica aplica para el resultado oficial: marcador oficial empatado
+        implica definición por penales y requiere ganador oficial de la llave.
 
     Puntaje:
-      - Acierto de ganador final: +POINTS_KO_WINNER
-      - Marcador exacto: +POINTS_KO_EXACT
-      - Acierto de definición por penales: +POINTS_KO_PENALTIES
+      - Ganador correcto con vía correcta (regular/extra vs penales): +2
+      - Ganador correcto con vía equivocada: +1
+        Ejemplos:
+          * Avanzó en regular/extra pero el usuario puso penales: +1
+          * Avanzó en penales pero el usuario puso regular/extra: +1
+      - Marcador exacto: +1
+      - Penales correctos: si indicó penales y acertó ganador cuando oficialmente
+        también fue por penales: +1
     """
     ph, pa = int(pred["home_goals"]), int(pred["away_goals"])
     rh, ra = int(result["home_goals"]), int(result["away_goals"])
@@ -1144,17 +1151,27 @@ def calc_ko_details(row: Any, pred: dict, result: dict) -> dict[str, Any]:
 
     exact_hit = (ph == rh and pa == ra)
     winner_hit = bool(pred_winner and official_winner and pred_winner == official_winner)
-    penalties_hit = bool(official_pen and pred_pen)
+    mode_hit = bool(winner_hit and pred_pen == official_pen)
+    mode_mismatch = bool(winner_hit and pred_pen != official_pen)
+    penalties_hit = bool(winner_hit and official_pen and pred_pen)
+
+    winner_points = 0
+    if winner_hit:
+        winner_points = POINTS_KO_WINNER if mode_hit else 1
+
     pts = 0
-    pts += POINTS_KO_WINNER if winner_hit else 0
+    pts += winner_points
     pts += POINTS_KO_EXACT if exact_hit else 0
     pts += POINTS_KO_PENALTIES if penalties_hit else 0
     return {
         "points": pts,
+        "winner_points": winner_points,
         "winner_hit": winner_hit,
         "result_hit": winner_hit,
         "exact_hit": exact_hit,
         "penalties_hit": penalties_hit,
+        "mode_hit": mode_hit,
+        "mode_mismatch": mode_mismatch,
         "predicted_winner": pred_winner,
         "official_winner": official_winner,
         "predicted_penalties": pred_pen,
@@ -1195,7 +1212,11 @@ def pts_label(pts: int) -> str:
 def ko_pts_label(details: dict) -> str:
     parts = []
     if details.get("winner_hit"):
-        parts.append(f"ganador/lectura +{POINTS_KO_WINNER}")
+        wp = int(details.get("winner_points", POINTS_KO_WINNER if details.get("mode_hit") else 1))
+        if details.get("mode_mismatch"):
+            parts.append(f"ganador correcto, vía distinta +{wp}")
+        else:
+            parts.append(f"ganador/avance +{wp}")
     if details.get("exact_hit"):
         parts.append(f"exacto +{POINTS_KO_EXACT}")
     if details.get("penalties_hit"):
@@ -2427,7 +2448,7 @@ with tab_preds:
                                     predicted_winner_side = ""
                                     predicted_penalties = False
                                     if is_knockout_stage(row):
-                                        st.caption(f"Eliminatorias: ganador final +{POINTS_KO_WINNER}, exacto +{POINTS_KO_EXACT}, penales +{POINTS_KO_PENALTIES}.")
+                                        st.caption(f"Eliminatorias: ganador/vía correcta +{POINTS_KO_WINNER}; ganador con vía distinta +1; exacto +{POINTS_KO_EXACT}; penales +{POINTS_KO_PENALTIES}.")
                                         if int(gh) == int(ga):
                                             predicted_penalties = True
                                             existing_side = normalize_winner_side((pred or {}).get("predicted_winner", ""), row.home, row.away)
@@ -2727,7 +2748,7 @@ with tab_rules_tab:
     r1, r2, r3, r4 = st.columns(4)
     render_kpi(r1, "Grupos exacto",    POINTS_EXACT,  "Marcador exacto en fase de grupos", "🎯")
     render_kpi(r2, "Grupos resultado", POINTS_RESULT, "Lectura correcta", "✅")
-    render_kpi(r3, "Eliminatorias",    f"{POINTS_KO_WINNER}+{POINTS_KO_EXACT}+{POINTS_KO_PENALTIES}", "Ganador final + exacto + penales", "🏆")
+    render_kpi(r3, "Eliminatorias",    f"{POINTS_KO_WINNER}+{POINTS_KO_EXACT}+{POINTS_KO_PENALTIES}", "Ganador/vía + exacto + penales", "🏆")
     render_kpi(r4, "Premio especial", POINTS_SPECIAL, "Valor por defecto configurable", "🏅")
 
     st.markdown(f"""
@@ -2749,7 +2770,7 @@ with tab_rules_tab:
 La quinela considera **fase de grupos** y **eliminatorias**: 16avos, octavos, cuartos, semifinales, partido por tercer lugar y final.
 
 - **Tabla de fase de grupos:** solo suma M001–M072 y solo muestra participantes con actividad en grupos. Incluye menciones automáticas como más marcadores exactos, más aciertos, mejor efectividad y mejor diferencia acumulada.
-- **Tabla de eliminatorias:** suma M073–M104 y solo muestra participantes con actividad en eliminatorias. Los partidos de eliminatoria puntúan: ganador final **+{POINTS_KO_WINNER}**, marcador exacto **+{POINTS_KO_EXACT}** y penales **+{POINTS_KO_PENALTIES}**. Si el marcador de eliminatoria queda empatado, el usuario debe elegir quién gana la llave; si no hay empate, el ganador se deriva del marcador y se asume sin penales.
+- **Tabla de eliminatorias:** suma M073–M104 y solo muestra participantes con actividad en eliminatorias. Los partidos de eliminatoria puntúan: ganador correcto con vía correcta **+{POINTS_KO_WINNER}**, ganador correcto con vía distinta **+1**, marcador exacto **+{POINTS_KO_EXACT}** y penales correctos **+{POINTS_KO_PENALTIES}**. Si el marcador de eliminatoria queda empatado, el usuario debe elegir quién gana la llave; si no hay empate, el ganador se deriva del marcador y se asume sin penales.
 - **Tabla global:** es una referencia acumulada de ambas etapas y los bonus especiales; no sustituye la premiación separada por etapa.
 
 #### Bloqueo de pronósticos
@@ -2841,8 +2862,8 @@ with tab_admin_tab:
                 decided_by_penalties = False
                 if is_knockout_stage(sel):
                     st.info(
-                        f"Regla eliminatorias: ganador final +{POINTS_KO_WINNER}, "
-                        f"marcador exacto +{POINTS_KO_EXACT}, penales +{POINTS_KO_PENALTIES}."
+                        f"Regla eliminatorias: ganador/vía correcta +{POINTS_KO_WINNER}, "
+                        f"ganador con vía distinta +1, exacto +{POINTS_KO_EXACT}, penales +{POINTS_KO_PENALTIES}."
                     )
                     if int(rh) == int(ra):
                         decided_by_penalties = True

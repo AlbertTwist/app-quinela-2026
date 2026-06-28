@@ -133,7 +133,8 @@ También funciona `ADMIN_PASSWORD = "..."`, pero `ADMIN_PASSWORD_HASH` es prefer
 |---|---:|
 | Grupos: marcador exacto | 3 |
 | Grupos: resultado correcto | 1 |
-| Eliminatorias: acierto ganador | 2 |
+| Eliminatorias: ganador correcto con vía correcta | 2 |
+| Eliminatorias: ganador correcto con vía distinta | 1 |
 | Eliminatorias: marcador exacto | +1 |
 | Eliminatorias: definición en penales | +1 |
 | Fallo | 0 |
@@ -236,6 +237,8 @@ REQUIRE_LOGIN_FOR_PUBLIC_PREDICTIONS = true
 
 
 
-### Nota v14.2
+### Nota v14.3
 
-En eliminatorias, ya no se pide ganador final siempre. Solo se solicita cuando el marcador capturado queda empatado. En ese escenario se interpreta como definición en penales. Si el marcador no es empate, el ganador se deriva automáticamente del marcador y se asume que el partido se resolvió en tiempo regular o agregado.
+En eliminatorias, el ganador final solo se solicita cuando el marcador capturado queda empatado. En ese escenario se interpreta como definición en penales. Si el marcador no es empate, el ganador se deriva automáticamente del marcador y se asume que el partido se resolvió en tiempo regular o agregado.
+
+La puntuación queda: ganador correcto con vía correcta = 2 pts; ganador correcto con vía distinta = 1 pt; marcador exacto = +1; penales correctos = +1. Así, si un usuario acierta quién avanza pero falla si fue por penales o por regular/extra, conserva 1 punto por lectura parcial del avance.

@@ -90,14 +90,14 @@ POINTS_EXACT        = max(1, get_int_secret("POINTS_EXACT", 3))
 POINTS_RESULT       = max(0, get_int_secret("POINTS_RESULT", 1))
 POINTS_SPECIAL      = max(0, get_int_secret("POINTS_SPECIAL", 5))
 # Fase de eliminatorias: puntos independientes de grupos.
-# Regla KO v14.4: ganador y vía correcta = 2; ganador con vía distinta = 1; extras solo si se acertó quién avanza.
+# Regla KO v14.3: ganador y vía correcta = 2; ganador con vía distinta = 1; exacto = +1; penales correctos = +1.
 POINTS_KO_WINNER    = max(0, get_int_secret("POINTS_KO_WINNER", 2))
 POINTS_KO_EXACT     = max(0, get_int_secret("POINTS_KO_EXACT", 1))
 POINTS_KO_PENALTIES = max(0, get_int_secret("POINTS_KO_PENALTIES", 1))
 ENABLE_REGISTRATION = get_bool_secret("ENABLE_REGISTRATION", True)
 REGISTRATION_INVITE_CODE = get_secret("REGISTRATION_INVITE_CODE", "").strip()
 USERNAME_RE         = re.compile(r"^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9_. -]{3,40}$")
-APP_VERSION         = "v14.4 · KO extras condicionados al ganador"
+APP_VERSION         = "v14.2 · KO empate exige ganador"
 READ_ONLY_MODE      = get_bool_secret("READ_ONLY_MODE", False)
 REVEAL_PREDICTIONS_AFTER_KICKOFF = get_bool_secret("REVEAL_PREDICTIONS_AFTER_KICKOFF", True)
 REQUIRE_LOGIN_FOR_PUBLIC_PREDICTIONS = get_bool_secret("REQUIRE_LOGIN_FOR_PUBLIC_PREDICTIONS", True)
@@ -1121,7 +1121,7 @@ def ko_official_winner_side(row: Any, result: dict) -> str:
     return normalize_winner_side(result.get("official_winner", ""), getattr(row, "home", ""), getattr(row, "away", ""))
 
 def calc_ko_details(row: Any, pred: dict, result: dict) -> dict[str, Any]:
-    """Puntuación de eliminatorias v14.4.
+    """Puntuación de eliminatorias v14.3.
 
     Regla operativa:
       - Si el marcador pronosticado NO es empate, el ganador se deriva del marcador
@@ -1137,13 +1137,9 @@ def calc_ko_details(row: Any, pred: dict, result: dict) -> dict[str, Any]:
         Ejemplos:
           * Avanzó en regular/extra pero el usuario puso penales: +1
           * Avanzó en penales pero el usuario puso regular/extra: +1
-      - Marcador exacto: +1, solo si primero se acertó quién avanza.
-      - Penales correctos: +1, solo si primero se acertó quién avanza y
-        oficialmente también fue por penales.
-
-    Regla de control:
-      - Si falla el ganador de la llave, no se otorgan puntos extra, aunque
-        haya acertado el marcador empatado o la instancia de penales.
+      - Marcador exacto: +1
+      - Penales correctos: si indicó penales y acertó ganador cuando oficialmente
+        también fue por penales: +1
     """
     ph, pa = int(pred["home_goals"]), int(pred["away_goals"])
     rh, ra = int(result["home_goals"]), int(result["away_goals"])
@@ -1153,15 +1149,10 @@ def calc_ko_details(row: Any, pred: dict, result: dict) -> dict[str, Any]:
     pred_winner = ko_predicted_winner_side(row, pred)
     official_winner = ko_official_winner_side(row, result)
 
-    score_exact_hit = (ph == rh and pa == ra)
+    exact_hit = (ph == rh and pa == ra)
     winner_hit = bool(pred_winner and official_winner and pred_winner == official_winner)
     mode_hit = bool(winner_hit and pred_pen == official_pen)
     mode_mismatch = bool(winner_hit and pred_pen != official_pen)
-
-    # v14.4: para acceder a puntos extra primero debe acertarse quién avanza.
-    # Caso típico: usuario pronostica 1-1 y penales, pero elige mal al ganador;
-    # aunque el marcador empatado coincida, el partido suma 0.
-    exact_hit = bool(winner_hit and score_exact_hit)
     penalties_hit = bool(winner_hit and official_pen and pred_pen)
 
     winner_points = 0
@@ -1178,7 +1169,6 @@ def calc_ko_details(row: Any, pred: dict, result: dict) -> dict[str, Any]:
         "winner_hit": winner_hit,
         "result_hit": winner_hit,
         "exact_hit": exact_hit,
-        "score_exact_hit": score_exact_hit,
         "penalties_hit": penalties_hit,
         "mode_hit": mode_hit,
         "mode_mismatch": mode_mismatch,
